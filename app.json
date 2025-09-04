@@ -11,9 +11,15 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.noelthomas.fluentminds",
+      "buildNumber": "29",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSSpeechRecognitionUsageDescription": "This app uses speech recognition to analyze your vocal patterns and provide feedback in activities.",
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      },
+      "runtimeVersion": "1.0.0"
     },
     "web": {
       "bundler": "metro",
@@ -23,7 +29,13 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "This app uses the microphone to allow you to record your voice for rhythm, speech, and storytelling exercises."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
@@ -35,7 +47,18 @@
       }
     },
     "android": {
-      "package": "com.noelthomas.fluentminds"
+      "package": "com.noelthomas.fluentminds",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
+    },
+    "owner": "noel124",
+    "updates": {
+      "url": "https://u.expo.dev/acfe0380-3680-4a40-ac77-50e1b1750c3c"
     }
   }
 }
