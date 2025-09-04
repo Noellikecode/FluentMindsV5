@@ -40,10 +40,6 @@ export default function TabLayout() {
           fontWeight: '500',
           marginTop: 4,
         },
-          fontSize: 11,
-          fontWeight: '500',
-          marginTop: 4,
-        },
         tabBarIconStyle: {
           marginTop: 4,
         },
