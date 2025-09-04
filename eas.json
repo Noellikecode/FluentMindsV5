@@ -1,6 +1,6 @@
 {
   "cli": {
-    "version": ">= 16.18.0",
+    "version": ">= 16.17.0",
     "appVersionSource": "remote"
   },
   "build": {
@@ -16,6 +16,17 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId": "fillerid@icloud.com",
+        "ascAppId": "6751386321",
+        "appleTeamId": "62759Y4U3Q",
+        "language": "en-US"
+      },
+      "android": {
+        "track": "production",
+        "releaseStatus": "completed"
+      }
+    }
   }
 }
