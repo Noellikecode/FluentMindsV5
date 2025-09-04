@@ -1,7 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Activity, Target, BookOpen, Settings } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
-import { BlurView } from 'expo-blur';
 
 export default function TabLayout() {
   return (
