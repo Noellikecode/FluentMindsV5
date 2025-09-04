@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Activity, Target, BookOpen, Settings } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
+import { BlurView } from 'expo-blur';
 
 export default function TabLayout() {
   return (
@@ -12,8 +13,17 @@ export default function TabLayout() {
           backgroundColor: 'rgba(0, 0, 0, 0.8)',
           borderTopWidth: 0,
           height: 85,
+          height: 85,
           paddingBottom: 8,
           paddingTop: 12,
+          borderRadius: 25,
+          marginHorizontal: 20,
+          marginBottom: 20,
+          elevation: 20,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 20,
           borderRadius: 25,
           marginHorizontal: 20,
           marginBottom: 20,
@@ -26,6 +36,10 @@ export default function TabLayout() {
         tabBarActiveTintColor: '#00d4ff',
         tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.4)',
         tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '500',
+          marginTop: 4,
+        },
           fontSize: 11,
           fontWeight: '500',
           marginTop: 4,
