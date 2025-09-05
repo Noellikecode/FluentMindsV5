@@ -11,10 +11,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.noelthomas.fluentminds",
-      "buildNumber": "29",
+      "buildNumber": "31",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "This app uses speech recognition to analyze your vocal patterns and provide feedback in activities.",
+        "NSCameraUsageDescription": "This app may need camera access for features like recording videos or capturing images to support speech and activity exercises.",
         "UIBackgroundModes": [
           "audio"
         ]
