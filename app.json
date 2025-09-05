@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.noelthomas.fluentminds",
-      "buildNumber": "31",
+      "buildNumber": "33",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "This app uses speech recognition to analyze your vocal patterns and provide feedback in activities.",
