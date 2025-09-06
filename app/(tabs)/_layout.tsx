@@ -1,6 +1,5 @@
 import { Tabs } from 'expo-router';
 import { Activity, Target, BookOpen, Settings } from 'lucide-react-native';
-import { BlurView } from 'expo-blur';
 
 export default function TabLayout() {
   return (
@@ -12,17 +11,8 @@ export default function TabLayout() {
           backgroundColor: 'rgba(0, 0, 0, 0.8)',
           borderTopWidth: 0,
           height: 85,
-          height: 85,
           paddingBottom: 8,
           paddingTop: 12,
-          borderRadius: 25,
-          marginHorizontal: 20,
-          marginBottom: 20,
-          elevation: 20,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 20,
           borderRadius: 25,
           marginHorizontal: 20,
           marginBottom: 20,
@@ -47,7 +37,7 @@ export default function TabLayout() {
         name="activities"
         options={{
           title: 'Activities',
-          tabBarIcon: ({ size, color }) => (
+          tabBarIcon: ({ color }) => (
             <Activity size={22} color={color} strokeWidth={1.5} />
           ),
         }}
@@ -56,7 +46,7 @@ export default function TabLayout() {
         name="goals"
         options={{
           title: 'Goals',
-          tabBarIcon: ({ size, color }) => (
+          tabBarIcon: ({ color }) => (
             <Target size={22} color={color} strokeWidth={1.5} />
           ),
         }}
@@ -65,7 +55,7 @@ export default function TabLayout() {
         name="journal"
         options={{
           title: 'Journal',
-          tabBarIcon: ({ size, color }) => (
+          tabBarIcon: ({ color }) => (
             <BookOpen size={22} color={color} strokeWidth={1.5} />
           ),
         }}
@@ -74,7 +64,7 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ size, color }) => (
+          tabBarIcon: ({ color }) => (
             <Settings size={22} color={color} strokeWidth={1.5} />
           ),
         }}
