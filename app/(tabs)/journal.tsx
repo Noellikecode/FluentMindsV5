@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ScrollView, TextInput, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BookOpen, Plus, Calendar, Mic, X } from 'lucide-react-native';
+import { BlurView } from 'expo-blur';
+import { BookOpen, Plus, Calendar, Mic, X, Pen, Heart, Star } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface JournalEntry {
@@ -63,13 +64,11 @@ export default function JournalPage() {
   };
 
   const toggleRecording = () => {
-    // In a real implementation, this would handle speech-to-text
     setIsRecording(!isRecording);
     if (!isRecording) {
-      // Simulate voice transcription
       setTimeout(() => {
         setNewEntryContent(prev => 
-          prev + (prev ? ' ' : '') + 'This is a voice transcription of your thoughts...'
+          prev + (prev ? ' ' : '') + 'neural patterns processing voice input...'
         );
         setIsRecording(false);
       }, 3000);
@@ -86,54 +85,184 @@ export default function JournalPage() {
   };
 
   const JournalEntryCard = ({ entry }: { entry: JournalEntry }) => (
-    <View style={styles.entryCard}>
-      <View style={styles.entryHeader}>
-        <Text style={styles.entryTitle}>{entry.title}</Text>
-        <Text style={styles.entryDate}>{formatDate(entry.date)}</Text>
-      </View>
-      <Text style={styles.entryContent} numberOfLines={3}>
-        {entry.content}
-      </Text>
-    </View>
+    <TouchableOpacity style={styles.entryCard} activeOpacity={0.9}>
+      <BlurView intensity={80} tint="dark" style={styles.entryGlass}>
+        <LinearGradient
+          colors={['#8B5CF630', '#A855F715']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.entryOverlay}
+        />
+        <LinearGradient
+          colors={['#8B5CF6', '#A855F7']}
+          style={styles.entryAccent}
+        />
+        <View style={styles.entryContent}>
+          <View style={styles.entryHeader}>
+            <View style={styles.entryIconContainer}>
+              <LinearGradient
+                colors={['#8B5CF6', '#A855F7']}
+                style={styles.entryIconGradient}
+              >
+                <Pen size={18} color="#FFFFFF" strokeWidth={1.8} />
+              </LinearGradient>
+            </View>
+            <View style={styles.entryHeaderText}>
+              <Text style={styles.entryTitle}>{entry.title}</Text>
+              <Text style={styles.entryDate}>{formatDate(entry.date)}</Text>
+            </View>
+            <View style={styles.entryStatusContainer}>
+              <LinearGradient
+                colors={['#8B5CF6', '#A855F7']}
+                style={styles.entryStatusDot}
+              />
+            </View>
+          </View>
+          <Text style={styles.entryPreview} numberOfLines={3}>
+            {entry.content}
+          </Text>
+          <View style={styles.entryFooter}>
+            <Text style={styles.entryWordCount}>
+              {entry.content.split(' ').length} words
+            </Text>
+            <View style={styles.entryMoodIndicator}>
+              <Heart size={14} color="#EC4899" strokeWidth={1.5} />
+            </View>
+          </View>
+        </View>
+      </BlurView>
+    </TouchableOpacity>
   );
 
   return (
-    <LinearGradient
-      colors={['#0f0c29', '#16213e', '#1a1a2e']}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      <LinearGradient
+        colors={['#0B1426', '#1E293B', '#0F172A']}
+        style={styles.backgroundGradient}
+      />
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-          <BookOpen size={32} color="#4facfe" strokeWidth={1.5} />
-          <View style={styles.headerText}>
-            <Text style={styles.title}>Voice Journal</Text>
-            <Text style={styles.subtitle}>Capture your thoughts and emotions</Text>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => setIsModalVisible(true)}
-          activeOpacity={0.8}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
         >
-          <Plus size={24} color="white" strokeWidth={2} />
-          <Text style={styles.addButtonText}>New Entry</Text>
-        </TouchableOpacity>
+          <View style={styles.header}>
+            <LinearGradient
+              colors={['#E8F4FD', '#CBD5E1', '#E8F4FD']}
+              style={styles.titleGradient}
+            >
+              <Text style={styles.title}>MIND</Text>
+            </LinearGradient>
+            <Text style={styles.subtitle}>capture neural patterns and thoughts</Text>
+            <View style={styles.decorativeLine} />
+          </View>
 
-        <ScrollView style={styles.entriesContainer} showsVerticalScrollIndicator={false}>
-          {entries.length === 0 ? (
-            <View style={styles.emptyState}>
-              <BookOpen size={48} color="rgba(255, 255, 255, 0.3)" strokeWidth={1} />
-              <Text style={styles.emptyStateTitle}>No entries yet</Text>
-              <Text style={styles.emptyStateText}>
-                Start your journey by creating your first journal entry
-              </Text>
+          <View style={styles.statsSection}>
+            <View style={styles.statsContainer}>
+              <TouchableOpacity style={styles.statCard} activeOpacity={0.9}>
+                <BlurView intensity={60} tint="dark" style={styles.statGlass}>
+                  <LinearGradient
+                    colors={['#8B5CF630', '#A855F715']}
+                    style={styles.statOverlay}
+                  />
+                  <View style={styles.statContent}>
+                    <View style={styles.statIconContainer}>
+                      <LinearGradient
+                        colors={['#8B5CF6', '#A855F7']}
+                        style={styles.statIconGradient}
+                      >
+                        <BookOpen size={20} color="#FFFFFF" strokeWidth={1.8} />
+                      </LinearGradient>
+                    </View>
+                    <Text style={styles.statValue}>{entries.length}</Text>
+                    <Text style={styles.statLabel}>total entries</Text>
+                  </View>
+                </BlurView>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.statCard} activeOpacity={0.9}>
+                <BlurView intensity={60} tint="dark" style={styles.statGlass}>
+                  <LinearGradient
+                    colors={['#6366F130', '#8B5CF615']}
+                    style={styles.statOverlay}
+                  />
+                  <View style={styles.statContent}>
+                    <View style={styles.statIconContainer}>
+                      <LinearGradient
+                        colors={['#6366F1', '#8B5CF6']}
+                        style={styles.statIconGradient}
+                      >
+                        <Calendar size={20} color="#FFFFFF" strokeWidth={1.8} />
+                      </LinearGradient>
+                    </View>
+                    <Text style={styles.statValue}>
+                      {entries.filter(e => 
+                        new Date(e.timestamp).toDateString() === new Date().toDateString()
+                      ).length}
+                    </Text>
+                    <Text style={styles.statLabel}>today</Text>
+                  </View>
+                </BlurView>
+              </TouchableOpacity>
             </View>
-          ) : (
-            entries.map((entry) => (
-              <JournalEntryCard key={entry.id} entry={entry} />
-            ))
-          )}
+          </View>
+
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => setIsModalVisible(true)}
+            activeOpacity={0.85}
+          >
+            <BlurView intensity={80} tint="dark" style={styles.addButtonGlass}>
+              <LinearGradient
+                colors={['#8B5CF640', '#A855F720']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.addButtonOverlay}
+              />
+              <View style={styles.addButtonContent}>
+                <View style={styles.addButtonIconContainer}>
+                  <LinearGradient
+                    colors={['#8B5CF6', '#A855F7']}
+                    style={styles.addButtonIconGradient}
+                  >
+                    <Plus size={24} color="#FFFFFF" strokeWidth={2} />
+                  </LinearGradient>
+                </View>
+                <View style={styles.addButtonText}>
+                  <Text style={styles.addButtonTitle}>create neural entry</Text>
+                  <Text style={styles.addButtonSubtitle}>capture your consciousness flow</Text>
+                </View>
+              </View>
+            </BlurView>
+          </TouchableOpacity>
+
+          <View style={styles.entriesSection}>
+            <Text style={styles.sectionTitle}>Mind Patterns</Text>
+            {entries.length === 0 ? (
+              <View style={styles.emptyState}>
+                <BlurView intensity={40} tint="dark" style={styles.emptyStateGlass}>
+                  <LinearGradient
+                    colors={['rgba(139, 92, 246, 0.1)', 'rgba(168, 85, 247, 0.05)']}
+                    style={styles.emptyStateOverlay}
+                  />
+                  <View style={styles.emptyStateContent}>
+                    <View style={styles.emptyStateIconContainer}>
+                      <BookOpen size={48} color="rgba(139, 92, 246, 0.5)" strokeWidth={1} />
+                    </View>
+                    <Text style={styles.emptyStateTitle}>neural patterns not detected</Text>
+                    <Text style={styles.emptyStateText}>
+                      initiate consciousness recording to begin mind mapping
+                    </Text>
+                  </View>
+                </BlurView>
+              </View>
+            ) : (
+              <View style={styles.entriesList}>
+                {entries.map((entry) => (
+                  <JournalEntryCard key={entry.id} entry={entry} />
+                ))}
+              </View>
+            )}
+          </View>
         </ScrollView>
 
         <Modal
@@ -141,225 +270,580 @@ export default function JournalPage() {
           animationType="slide"
           presentationStyle="pageSheet"
         >
-          <LinearGradient
-            colors={['#0f0c29', '#16213e', '#1a1a2e']}
-            style={styles.modalContainer}
-          >
+          <View style={styles.modalContainer}>
+            <LinearGradient
+              colors={['#0B1426', '#1E293B', '#0F172A']}
+              style={styles.modalBackground}
+            />
             <SafeAreaView style={styles.modalSafeArea}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>New Journal Entry</Text>
-                <TouchableOpacity
-                  onPress={() => setIsModalVisible(false)}
-                  style={styles.closeButton}
-                >
-                  <X size={24} color="white" />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.modalContent}>
-                <TextInput
-                  style={styles.titleInput}
-                  placeholder="Entry title..."
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  value={newEntryTitle}
-                  onChangeText={setNewEntryTitle}
-                />
-
-                <View style={styles.contentInputContainer}>
-                  <TextInput
-                    style={styles.contentInput}
-                    placeholder="Share your thoughts..."
-                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                    value={newEntryContent}
-                    onChangeText={setNewEntryContent}
-                    multiline
-                    textAlignVertical="top"
-                  />
-                  <TouchableOpacity
-                    style={[styles.voiceButton, isRecording && styles.voiceButtonActive]}
-                    onPress={toggleRecording}
+              <BlurView intensity={100} tint="dark" style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <LinearGradient
+                    colors={['#8B5CF6', '#A855F7']}
+                    style={styles.modalTitleContainer}
                   >
-                    <Mic size={20} color="white" />
+                    <Text style={styles.modalTitle}>neural entry</Text>
+                  </LinearGradient>
+                  <TouchableOpacity
+                    onPress={() => setIsModalVisible(false)}
+                    style={styles.closeButton}
+                    activeOpacity={0.8}
+                  >
+                    <BlurView intensity={60} tint="dark" style={styles.closeButtonGlass}>
+                      <X size={20} color="#FFFFFF" strokeWidth={2} />
+                    </BlurView>
                   </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.saveButton}
-                  onPress={saveJournalEntry}
-                  disabled={newEntryTitle.trim() === '' || newEntryContent.trim() === ''}
-                >
-                  <Text style={styles.saveButtonText}>Save Entry</Text>
-                </TouchableOpacity>
-              </View>
+                <View style={styles.inputSection}>
+                  <View style={styles.inputContainer}>
+                    <BlurView intensity={40} tint="dark" style={styles.inputGlass}>
+                      <TextInput
+                        style={styles.titleInput}
+                        placeholder="consciousness pattern title..."
+                        placeholderTextColor="rgba(203, 213, 225, 0.5)"
+                        value={newEntryTitle}
+                        onChangeText={setNewEntryTitle}
+                      />
+                    </BlurView>
+                  </View>
+
+                  <View style={styles.contentInputContainer}>
+                    <BlurView intensity={40} tint="dark" style={styles.contentInputGlass}>
+                      <TextInput
+                        style={styles.contentInput}
+                        placeholder="stream neural patterns and consciousness flow..."
+                        placeholderTextColor="rgba(203, 213, 225, 0.5)"
+                        value={newEntryContent}
+                        onChangeText={setNewEntryContent}
+                        multiline
+                        textAlignVertical="top"
+                      />
+                      <TouchableOpacity
+                        style={[styles.voiceButton, isRecording && styles.voiceButtonActive]}
+                        onPress={toggleRecording}
+                        activeOpacity={0.8}
+                      >
+                        <BlurView intensity={80} tint="dark" style={styles.voiceButtonGlass}>
+                          <LinearGradient
+                            colors={isRecording ? ['#EF4444', '#DC2626'] : ['#8B5CF6', '#A855F7']}
+                            style={styles.voiceButtonGradient}
+                          >
+                            <Mic size={18} color="#FFFFFF" strokeWidth={2} />
+                          </LinearGradient>
+                        </BlurView>
+                      </TouchableOpacity>
+                    </BlurView>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.saveButton}
+                    onPress={saveJournalEntry}
+                    disabled={newEntryTitle.trim() === '' || newEntryContent.trim() === ''}
+                    activeOpacity={0.85}
+                  >
+                    <BlurView intensity={80} tint="dark" style={styles.saveButtonGlass}>
+                      <LinearGradient
+                        colors={['#8B5CF6', '#A855F7']}
+                        style={styles.saveButtonGradient}
+                      >
+                        <Text style={styles.saveButtonText}>archive neural pattern</Text>
+                      </LinearGradient>
+                    </BlurView>
+                  </TouchableOpacity>
+                </View>
+              </BlurView>
             </SafeAreaView>
-          </LinearGradient>
+          </View>
         </Modal>
       </SafeAreaView>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    position: 'relative',
+  },
+  backgroundGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   safeArea: {
     flex: 1,
-    paddingHorizontal: 20,
+  },
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 120,
   },
   header: {
-    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 40,
-    marginBottom: 30,
+    marginTop: 60,
+    marginBottom: 56,
   },
-  headerText: {
-    marginLeft: 15,
+  titleGradient: {
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginBottom: 20,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 4,
+    fontSize: 36,
+    fontWeight: '300',
+    color: '#0B1426',
+    letterSpacing: 12,
+    fontFamily: 'System',
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: '#a0a0a0',
+    fontWeight: '400',
+    color: '#94A3B8',
+    textAlign: 'center',
+    letterSpacing: 1.5,
+    textTransform: 'lowercase',
+    fontFamily: 'System',
+    marginBottom: 16,
+  },
+  decorativeLine: {
+    width: 60,
+    height: 2,
+    backgroundColor: '#8B5CF6',
+    borderRadius: 1,
+    opacity: 0.6,
+  },
+  statsSection: {
+    marginBottom: 32,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  statCard: {
+    flex: 1,
+    height: 100,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  statGlass: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.2)',
+    position: 'relative',
+  },
+  statOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0.15,
+  },
+  statContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+  },
+  statIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  statIconGradient: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(255, 255, 255, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#94A3B8',
+    letterSpacing: 0.5,
+    textTransform: 'lowercase',
   },
   addButton: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    marginBottom: 40,
+    elevation: 12,
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+  },
+  addButtonGlass: {
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+    position: 'relative',
+  },
+  addButtonOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0.15,
+  },
+  addButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 28,
+    paddingVertical: 24,
+  },
+  addButtonIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    marginRight: 24,
+    overflow: 'hidden',
+  },
+  addButtonIconGradient: {
+    flex: 1,
     justifyContent: 'center',
-    backgroundColor: '#4facfe',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 25,
-    marginBottom: 30,
+    alignItems: 'center',
   },
   addButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  entriesContainer: {
     flex: 1,
   },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
+  addButtonTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+    textShadowColor: 'rgba(255, 255, 255, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+    letterSpacing: 0.5,
+    textTransform: 'lowercase',
   },
-  emptyStateTitle: {
+  addButtonSubtitle: {
+    fontSize: 14,
+    color: 'rgba(203, 213, 225, 0.8)',
+    letterSpacing: 0.3,
+    textTransform: 'lowercase',
+  },
+  entriesSection: {
+    marginBottom: 40,
+  },
+  sectionTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: 'rgba(255, 255, 255, 0.7)',
-    marginTop: 20,
-    marginBottom: 8,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 24,
+    textShadowColor: 'rgba(255, 255, 255, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
-  emptyStateText: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.5)',
-    textAlign: 'center',
-    lineHeight: 22,
+  entriesList: {
+    gap: 20,
   },
   entryCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 15,
+    borderRadius: 24,
+    overflow: 'hidden',
+    elevation: 8,
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  entryGlass: {
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.2)',
+    position: 'relative',
+  },
+  entryOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0.1,
+  },
+  entryAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+  },
+  entryContent: {
+    paddingHorizontal: 24,
+    paddingVertical: 20,
   },
   entryHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  entryTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#ffffff',
+  entryIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    marginRight: 16,
+    overflow: 'hidden',
+  },
+  entryIconGradient: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  entryHeaderText: {
     flex: 1,
   },
-  entryDate: {
-    fontSize: 14,
-    color: '#a0a0a0',
-  },
-  entryContent: {
+  entryTitle: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
-    lineHeight: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 2,
+    textShadowColor: 'rgba(255, 255, 255, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+    letterSpacing: 0.3,
+  },
+  entryDate: {
+    fontSize: 12,
+    color: '#94A3B8',
+    letterSpacing: 0.3,
+    textTransform: 'lowercase',
+  },
+  entryStatusContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  entryStatusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  entryPreview: {
+    fontSize: 14,
+    color: 'rgba(203, 213, 225, 0.85)',
+    lineHeight: 20,
+    letterSpacing: 0.2,
+    marginBottom: 16,
+  },
+  entryFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  entryWordCount: {
+    fontSize: 12,
+    color: 'rgba(148, 163, 184, 0.7)',
+    letterSpacing: 0.3,
+    textTransform: 'lowercase',
+  },
+  entryMoodIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(236, 72, 153, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyState: {
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  emptyStateGlass: {
+    backgroundColor: 'rgba(15, 23, 42, 0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.15)',
+    position: 'relative',
+  },
+  emptyStateOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  emptyStateContent: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  emptyStateIconContainer: {
+    marginBottom: 24,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginBottom: 12,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+    textTransform: 'lowercase',
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: 'rgba(148, 163, 184, 0.8)',
+    textAlign: 'center',
+    lineHeight: 20,
+    letterSpacing: 0.3,
+    textTransform: 'lowercase',
   },
   modalContainer: {
     flex: 1,
+    position: 'relative',
+  },
+  modalBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   modalSafeArea: {
     flex: 1,
-    paddingHorizontal: 20,
+  },
+  modalContent: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    margin: 0,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 30,
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 24,
+  },
+  modalTitleContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 12,
   },
   modalTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#ffffff',
+    fontWeight: '300',
+    color: '#0B1426',
+    letterSpacing: 4,
+    textTransform: 'lowercase',
   },
   closeButton: {
-    padding: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
   },
-  modalContent: {
+  closeButtonGlass: {
     flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  inputSection: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingBottom: 32,
+  },
+  inputContainer: {
+    marginBottom: 20,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  inputGlass: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   titleInput: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 18,
-    color: 'white',
-    marginBottom: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
   contentInputContainer: {
     flex: 1,
     position: 'relative',
+    marginBottom: 24,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  contentInputGlass: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    position: 'relative',
   },
   contentInput: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: 'white',
     flex: 1,
-    marginBottom: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingRight: 70,
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: '400',
+    letterSpacing: 0.2,
+    lineHeight: 22,
   },
   voiceButton: {
     position: 'absolute',
-    bottom: 30,
-    right: 15,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    bottom: 16,
+    right: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  voiceButtonActive: {
+    transform: [{ scale: 1.1 }],
+  },
+  voiceButtonGlass: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  voiceButtonGradient: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  voiceButtonActive: {
-    backgroundColor: '#f5576c',
-  },
   saveButton: {
-    backgroundColor: '#4facfe',
-    paddingVertical: 16,
-    borderRadius: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+    elevation: 8,
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  saveButtonGlass: {
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+  },
+  saveButtonGradient: {
+    paddingVertical: 18,
     alignItems: 'center',
-    marginBottom: 20,
   },
   saveButtonText: {
-    color: 'white',
-    fontSize: 18,
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'lowercase',
   },
 });

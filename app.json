@@ -16,6 +16,7 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "This app uses speech recognition to analyze your vocal patterns and provide feedback in activities.",
         "NSCameraUsageDescription": "This app may need camera access for features like recording videos or capturing images to support speech and activity exercises.",
+        "NSMicrophoneUsageDescription": "This app needs access to your microphone for speech practice.",
         "UIBackgroundModes": [
           "audio"
         ]

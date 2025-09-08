@@ -9,35 +9,50 @@ export default function TabLayout() {
         headerShown: false,
         tabBarStyle: {
           position: 'absolute',
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          borderTopWidth: 0,
+          backgroundColor: 'rgba(5, 15, 25, 0.2)',
+          backdropFilter: 'blur(30px)',
+          borderTopWidth: 0.5,
+          borderTopColor: 'rgba(0, 255, 180, 0.08)',
+          borderLeftWidth: 0.5,
+          borderLeftColor: 'rgba(0, 255, 180, 0.08)',
+          borderRightWidth: 0.5,
+          borderRightColor: 'rgba(0, 255, 180, 0.08)',
           height: 85,
-          height: 85,
-          paddingBottom: 8,
+          paddingBottom: 15,
           paddingTop: 12,
-          borderRadius: 25,
-          marginHorizontal: 20,
-          marginBottom: 20,
-          elevation: 20,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 20,
-          borderRadius: 25,
-          marginHorizontal: 20,
-          marginBottom: 20,
-          elevation: 20,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 20,
+          borderRadius: 42,
+          marginHorizontal: 12,
+          marginBottom: 28,
+          elevation: 0,
+          shadowColor: 'rgba(0, 180, 120, 0.4)',
+          shadowOffset: { width: 0, height: 12 },
+          shadowOpacity: 0.35,
+          shadowRadius: 32,
+          overflow: 'hidden',
         },
-        tabBarActiveTintColor: '#00d4ff',
-        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.4)',
+        tabBarBackground: () => (
+          <BlurView
+            intensity={120}
+            tint="systemUltraThinMaterialDark"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(2, 12, 20, 0.85)',
+            }}
+          />
+        ),
+        tabBarActiveTintColor: '#00FFB4',
+        tabBarInactiveTintColor: 'rgba(100, 140, 160, 0.45)',
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '500',
+          fontSize: 9,
+          fontWeight: '300',
+          letterSpacing: 1.2,
           marginTop: 4,
+          fontFamily: 'System',
+          textTransform: 'uppercase',
         },
         tabBarIconStyle: {
           marginTop: 4,
@@ -46,36 +61,52 @@ export default function TabLayout() {
       <Tabs.Screen
         name="activities"
         options={{
-          title: 'Activities',
-          tabBarIcon: ({ size, color }) => (
-            <Activity size={22} color={color} strokeWidth={1.5} />
+          title: 'Flow',
+          tabBarIcon: ({ size, color, focused }) => (
+            <Activity
+              size={18}
+              color={focused ? '#00FFB4' : color}
+              strokeWidth={focused ? 1.2 : 0.8}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="goals"
         options={{
-          title: 'Goals',
-          tabBarIcon: ({ size, color }) => (
-            <Target size={22} color={color} strokeWidth={1.5} />
+          title: 'Targets',
+          tabBarIcon: ({ size, color, focused }) => (
+            <Target
+              size={18}
+              color={focused ? '#00FFB4' : color}
+              strokeWidth={focused ? 1.2 : 0.8}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="journal"
         options={{
-          title: 'Journal',
-          tabBarIcon: ({ size, color }) => (
-            <BookOpen size={22} color={color} strokeWidth={1.5} />
+          title: 'Mind',
+          tabBarIcon: ({ size, color, focused }) => (
+            <BookOpen
+              size={18}
+              color={focused ? '#00FFB4' : color}
+              strokeWidth={focused ? 1.2 : 0.8}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
-          tabBarIcon: ({ size, color }) => (
-            <Settings size={22} color={color} strokeWidth={1.5} />
+          title: 'Core',
+          tabBarIcon: ({ size, color, focused }) => (
+            <Settings
+              size={18}
+              color={focused ? '#00FFB4' : color}
+              strokeWidth={focused ? 1.2 : 0.8}
+            />
           ),
         }}
       />
