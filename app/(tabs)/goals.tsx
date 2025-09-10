@@ -1,10 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Animated as RNAnimated, TextInput, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Calendar, Clock, Trophy, Target, TrendingUp, Award, Check, Plus, Zap, Brain, Pen, Atom } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, { 
+  useSharedValue, 
+  withTiming,
+  useAnimatedProps,
+  useAnimatedStyle
+} from 'react-native-reanimated';
+import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
+import Svg, { Circle } from 'react-native-svg';
 
 interface SessionData {
   date: string;
@@ -49,6 +56,13 @@ export default function GoalsPage() {
   ]);
 
   const progressValue = useSharedValue(0);
+  const swipeableRefs = useRef<{ [key: string]: Swipeable | null }>({});
+  
+  const setSwipeableRef = useCallback((id: string, ref: Swipeable | null) => {
+    if (ref) {
+      swipeableRefs.current[id] = ref;
+    }
+  }, []);
 
   useEffect(() => {
     loadUserStats();
@@ -57,7 +71,8 @@ export default function GoalsPage() {
 
   useEffect(() => {
     const completedGoals = goals.filter(goal => goal.completed).length;
-    const progressPercentage = (completedGoals / goals.length) * 100;
+    const totalGoals = goals.length;
+    const progressPercentage = totalGoals > 0 ? (completedGoals / totalGoals) * 100 : 0;
     progressValue.value = withTiming(progressPercentage, { duration: 1000 });
   }, [goals]);
 
@@ -97,7 +112,7 @@ export default function GoalsPage() {
     }
   };
 
-  const createNewGoal = () => {
+  const createNewGoal = async () => {
     const newGoal: Goal = {
       id: Date.now().toString(),
       title: 'new practice goal',
@@ -105,7 +120,11 @@ export default function GoalsPage() {
     };
     const updatedGoals = [...goals, newGoal];
     setGoals(updatedGoals);
-    AsyncStorage.setItem('userGoals', JSON.stringify(updatedGoals));
+    try {
+      await AsyncStorage.setItem('userGoals', JSON.stringify(updatedGoals));
+    } catch (error) {
+      console.error('Error saving goals after creation:', error);
+    }
   };
 
   const calculateStats = (sessions: SessionData[]) => {
@@ -153,8 +172,9 @@ export default function GoalsPage() {
 
   const CircularProgress = ({ percentage }: { percentage: number }) => {
     const animatedStyle = useAnimatedStyle(() => {
+      const rotation = (progressValue.value / 100) * 360;
       return {
-        transform: [{ rotate: `${(progressValue.value / 100) * 360}deg` }],
+        transform: [{ rotate: `${rotation}deg` }],
       };
     });
 
@@ -272,7 +292,8 @@ export default function GoalsPage() {
   );
 
   const completedGoals = goals.filter(goal => goal.completed).length;
-  const progressPercentage = (completedGoals / goals.length) * 100;
+  const totalGoals = goals.length;
+  const progressPercentage = totalGoals > 0 ? (completedGoals / totalGoals) * 100 : 0;
 
   return (
     <View style={styles.container}>

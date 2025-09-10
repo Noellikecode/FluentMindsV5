@@ -36,7 +36,7 @@ const activitiesData = [
     {
         id: 'mindful-moments',
         title: 'Quantum Breath',
-        description: 'practice breathing with specialized awareness',
+        description: 'practice breathing with aw',
         icon: Atom,
         gradient: ['#7C3AED', '#6366F1'],
         bgGradient: ['#7C3AED30', '#6366F115'],
