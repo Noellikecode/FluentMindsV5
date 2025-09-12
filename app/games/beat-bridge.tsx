@@ -11,6 +11,7 @@ import {
   Modal,
   ScrollView,
   Dimensions,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -24,12 +25,16 @@ import {
   Plus,
   Minus,
   X,
+  HelpCircle,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
+import Constants from 'expo-constants';
 
 const { width } = Dimensions.get('window');
+
+const ASSEMBLYAI_API_KEY = Constants.expoConfig?.extra?.assemblyApiKey ?? "3e043ca91e484201a625ca39f5f2f260";
 
 const SAMPLE_SENTENCES = [
   'The quick brown fox jumps over the lazy dog.',
@@ -44,9 +49,11 @@ const SAMPLE_SENTENCES = [
   "Betty Botter bought some butter, but she said the butter's bitter.",
 ];
 
-const ASSEMBLYAI_API_KEY = "3e043ca91e484201a625ca39f5f2f260";
+const SIMILARITY_THRESHOLD = 0.75;
+const MIN_TEMPO = 15;
+const MAX_TEMPO = 100;
+const TEMPO_ADJUSTMENT_STEP = 5;
 
-// Word matching logic
 const wordsMatch = (spokenWord: string, expectedWord: string): boolean => {
   const spoken = spokenWord.toLowerCase().trim();
   const expected = expectedWord.toLowerCase().trim();
@@ -56,7 +63,7 @@ const wordsMatch = (spokenWord: string, expectedWord: string): boolean => {
   if (expected.includes(spoken) && spoken.length > 2) return true;
 
   const similarity = calculateSimilarity(spoken, expected);
-  return similarity > 0.75;
+  return similarity > SIMILARITY_THRESHOLD;
 };
 
 const calculateSimilarity = (str1: string, str2: string): number => {
@@ -102,6 +109,13 @@ const getRandomPhrase = (): string[] => {
   return randomSentence.replace(/\s+/g, ' ').trim().split(' ');
 };
 
+interface SessionData {
+  date: string;
+  gameMode: string;
+  duration: number;
+  completed: boolean;
+}
+
 interface SpeechAnalysis {
   transcript: string;
   confidence: number;
@@ -125,7 +139,7 @@ export default function BeatBridge() {
   const [isRecording, setIsRecording] = useState(false);
   const [sessionTime, setSessionTime] = useState(0);
   const [completedSentences, setCompletedSentences] = useState(0);
-  const [tempo, setTempo] = useState(25); // Changed from 120 to 25
+  const [tempo, setTempo] = useState(25);
   const [correctWords, setCorrectWords] = useState<boolean[]>([]);
   const [completedWordsIndices, setCompletedWordsIndices] = useState<number[]>([]);
   const [accuracy, setAccuracy] = useState(0);
@@ -134,6 +148,8 @@ export default function BeatBridge() {
   const [sendingMessage, setSendingMessage] = useState("Processing your speech...");
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
   const [speechAnalysis, setSpeechAnalysis] = useState<SpeechAnalysis | null>(null);
+  const [isHelpModalVisible, setIsHelpModalVisible] = useState(false);
+  const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
 
   const beatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -144,14 +160,54 @@ export default function BeatBridge() {
   const wordCadenceTimeoutRef = useRef<number | null>(null);
   const sendingFadeAnim = useRef(new Animated.Value(0)).current;
   const sendingScaleAnim = useRef(new Animated.Value(0.8)).current;
+  const helpIconOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    const checkFirstTimeUser = async () => {
+      try {
+        const sessionsData = await AsyncStorage.getItem('userSessions');
+        const sessions: SessionData[] = sessionsData ? JSON.parse(sessionsData) : [];
+        
+        const completedBeatBridgeSessions = sessions.filter(
+          session => session.gameMode === 'beat-bridge' && session.completed
+        ).length;
+
+        if (completedBeatBridgeSessions === 0) {
+          setIsFirstTimeUser(true);
+        }
+      } catch (error) {
+        console.error("Failed to check session history:", error);
+      }
+    };
+
+    checkFirstTimeUser();
     generateNewSentence();
     startBridgeGlow();
     return () => {
       cleanup();
     };
   }, []);
+
+  useEffect(() => {
+    if (isFirstTimeUser) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(helpIconOpacity, {
+            toValue: 0.3,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(helpIconOpacity, {
+            toValue: 1,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    }
+  }, [isFirstTimeUser]);
 
   useEffect(() => {
     if (isPlaying) {
@@ -273,9 +329,7 @@ export default function BeatBridge() {
 
   const startBeat = () => {
     stopBeat();
-    // Use tempo to calculate beat interval: 60000ms / BPM = ms per beat
-    const beatInterval = Math.max(500, 60000 / tempo); // Minimum 500ms for slow tempos
-    console.log(`Beat interval: ${beatInterval}ms for tempo ${tempo} BPM`);
+    const beatInterval = Math.max(500, 60000 / tempo);
     
     beatIntervalRef.current = setInterval(() => {
       setCurrentWordIndex(prevIndex => {
@@ -319,9 +373,7 @@ export default function BeatBridge() {
     setCurrentWordIndex(0);
     stopWordCadence();
 
-    // Use tempo for word cadence too: 60000ms / tempo = ms per word
-    const WORD_CADENCE_SPEED = Math.max(800, 60000 / tempo); // Minimum 800ms for slow tempos
-    const totalTime = (words.length * WORD_CADENCE_SPEED) + 1000; // Reduced delay before auto-submit
+    const WORD_CADENCE_SPEED = Math.max(800, 60000 / tempo);
 
     let wordIndex = 0;
     const intervalId = setInterval(() => {
@@ -330,11 +382,9 @@ export default function BeatBridge() {
         setCurrentWordIndex(wordIndex);
       } else {
         clearInterval(intervalId);
-        // Auto-submit after last word is done
-        console.log('Last word completed, auto-submitting...');
         setTimeout(() => {
           stopExercise();
-        }, 500); // Small delay to show the last word highlight
+        }, 500);
       }
     }, WORD_CADENCE_SPEED);
 
@@ -351,23 +401,6 @@ export default function BeatBridge() {
       wordAdvanceInterval.current = null;
     }
   };
-
-  const markWordAsCompleted = useCallback((wordIndex: number) => {
-    if (completedWordsIndices.includes(wordIndex)) return;
-
-    setCompletedWordsIndices(prev => {
-      if (!prev.includes(wordIndex)) {
-        return [...prev, wordIndex].sort((a, b) => a - b);
-      }
-      return prev;
-    });
-
-    setCorrectWords(prev => {
-      const newCorrect = [...prev];
-      newCorrect[wordIndex] = true;
-      return newCorrect;
-    });
-  }, [completedWordsIndices]);
 
   const setupAudio = async (): Promise<boolean> => {
     try {
@@ -430,7 +463,6 @@ export default function BeatBridge() {
       
       await recording.startAsync();
       setIsRecording(true);
-      console.log('Recording started successfully');
 
     } catch (error: any) {
       console.error('Failed to start recording:', error);
@@ -444,7 +476,6 @@ export default function BeatBridge() {
     setIsRecording(false);
 
     if (!recordingRef.current) {
-      console.warn('No recording in progress.');
       return null;
     }
 
@@ -468,7 +499,6 @@ export default function BeatBridge() {
         playsInSilentModeIOS: false,
       }).catch(e => console.error("Error resetting audio mode:", e));
 
-      console.log('Recording stopped and unloaded.');
       return uri;
     } catch (error) {
       console.error("Error stopping or unloading recording:", error);
@@ -476,24 +506,20 @@ export default function BeatBridge() {
       return null;
     }
   };
-
-  function atob(input: string): string {
+  
+  const base64Decode = (input: string): string => {
+    if (typeof atob === 'function') {
+      return atob(input);
+    }
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
     let str = input.replace(/=+$/, '');
     let output = '';
-
-    if (str.length % 4 == 1) {
-      throw new Error("'atob' failed: The string to be decoded is not correctly encoded.");
-    }
-
     for (let bc = 0, bs = 0, buffer, i = 0;
       buffer = str.charAt(i++);
-      ~buffer && (bs = bc % 4 ? bs * 64 + buffer : buffer,
-        bc++ % 4) ? output += String.fromCharCode(255 & bs >> (-2 * bc & 6)) : 0
+      ~buffer && (bs = bc % 4 ? bs * 64 + buffer : buffer, bc++ % 4) ? output += String.fromCharCode(255 & bs >> (-2 * bc & 6)) : 0
     ) {
       buffer = chars.indexOf(buffer);
     }
-
     return output;
   }
 
@@ -545,14 +571,11 @@ export default function BeatBridge() {
       setSendingMessage("Preparing audio file...");
 
       const fileInfo = await FileSystem.getInfoAsync(audioUri);
-      console.log('File info:', fileInfo);
-
       if (!fileInfo.exists || fileInfo.size === 0) {
         throw new Error('Recording file is empty or does not exist');
       }
 
       setSendingMessage("Reading audio file...");
-
       const audioData = await FileSystem.readAsStringAsync(audioUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -562,14 +585,11 @@ export default function BeatBridge() {
       }
 
       setSendingMessage("Uploading audio file...");
-
-      const binaryString = atob(audioData);
+      const binaryString = base64Decode(audioData);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
       }
-
-      console.log('Audio file size:', bytes.length, 'bytes');
 
       const uploadResponse = await fetch('https://api.assemblyai.com/v2/upload', {
         method: 'POST',
@@ -582,13 +602,10 @@ export default function BeatBridge() {
 
       if (!uploadResponse.ok) {
         const errorText = await uploadResponse.text();
-        console.error('Upload error response:', errorText);
         throw new Error(`Upload failed: ${uploadResponse.status} - ${errorText}`);
       }
 
       const uploadResult = await uploadResponse.json();
-      console.log('Upload result:', uploadResult);
-
       if (!uploadResult.upload_url) {
         throw new Error('No upload URL returned from AssemblyAI');
       }
@@ -596,7 +613,6 @@ export default function BeatBridge() {
       const audioUrl = uploadResult.upload_url;
 
       setSendingMessage("Starting transcription...");
-
       const transcriptResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
         method: 'POST',
         headers: {
@@ -614,21 +630,16 @@ export default function BeatBridge() {
 
       if (!transcriptResponse.ok) {
         const errorText = await transcriptResponse.text();
-        console.error('Transcription request error:', errorText);
         throw new Error(`Transcription request failed: ${transcriptResponse.status} - ${errorText}`);
       }
 
       const transcriptResult = await transcriptResponse.json();
-      console.log('Transcription request result:', transcriptResult);
-
       if (!transcriptResult.id) {
         throw new Error('No transcript ID returned from AssemblyAI');
       }
 
       const transcriptId = transcriptResult.id;
-
       setSendingMessage("Transcribing your speech...");
-
       const finalTranscript = await pollForTranscription(transcriptId);
       analyzeTranscriptForMatches(finalTranscript);
 
@@ -648,15 +659,11 @@ export default function BeatBridge() {
     }
 
     const spokenWords = transcript.toLowerCase().split(/\s+/).filter(Boolean);
-    console.log('Spoken words:', spokenWords);
-    console.log('Expected words:', words);
-    
     let matchedWords = 0;
-    const expectedWordsLower = words.map(w => w.toLowerCase().replace(/[^\w]/g, '')); // Remove punctuation
+    const expectedWordsLower = words.map(w => w.toLowerCase().replace(/[^\w]/g, ''));
     
-    // Count matches more accurately
     spokenWords.forEach((spokenWord: string) => {
-      const cleanSpokenWord = spokenWord.replace(/[^\w]/g, ''); // Remove punctuation
+      const cleanSpokenWord = spokenWord.replace(/[^\w]/g, '');
       expectedWordsLower.forEach((expectedWord) => {
         if (wordsMatch(cleanSpokenWord, expectedWord)) {
           matchedWords++;
@@ -664,12 +671,43 @@ export default function BeatBridge() {
       });
     });
 
-    // Ensure we don't exceed the total number of expected words
     matchedWords = Math.min(matchedWords, words.length);
-    
-    console.log(`Matched ${matchedWords} out of ${words.length} words`);
-
     showGameResults(transcriptResult, matchedWords);
+  };
+
+  const saveSessionData = async (currentAccuracy: number) => {
+    if (sessionTime > 0) {
+      try {
+        const sessionData = {
+          date: new Date().toISOString(),
+          gameMode: 'beat-bridge',
+          duration: sessionTime,
+          completed: true,
+          completedSentences,
+          tempo,
+          accuracy: currentAccuracy,
+        };
+
+        // Retry logic for more reliable saving
+        let retries = 3;
+        while (retries > 0) {
+          try {
+            const existing = await AsyncStorage.getItem('userSessions');
+            const sessions = existing ? JSON.parse(existing) : [];
+            sessions.push(sessionData);
+            await AsyncStorage.setItem('userSessions', JSON.stringify(sessions));
+            break;
+          } catch (err) {
+            retries--;
+            if (retries === 0) throw err;
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+      } catch (err) {
+        console.error('Error saving session:', err);
+        throw err; // Re-throw to handle in the calling function
+      }
+    }
   };
 
   const showGameResults = (transcriptResult?: any, matchedWords?: number) => {
@@ -684,7 +722,8 @@ export default function BeatBridge() {
     setAccuracy(wordAccuracyPercentage);
     setGamePhase('waiting');
 
-    // Create speech analysis for modal
+    saveSessionData(wordAccuracyPercentage);
+
     if (transcriptResult) {
       const analysis: SpeechAnalysis = {
         transcript: transcriptResult.text || '',
@@ -762,32 +801,21 @@ export default function BeatBridge() {
   };
 
   const adjustTempo = (change: number) => {
-    const newTempo = Math.max(15, Math.min(100, tempo + change)); // Changed max from 180 to 100
+    const newTempo = Math.max(MIN_TEMPO, Math.min(MAX_TEMPO, tempo + change));
     setTempo(newTempo);
   };
 
   const endSession = async () => {
-    cleanup();
-    if (sessionTime > 0) {
-      try {
-        const sessionData = {
-          date: new Date().toISOString(),
-          gameMode: 'beat-bridge',
-          duration: sessionTime,
-          completed: true,
-          completedSentences,
-          tempo,
-          accuracy,
-        };
-        const existing = await AsyncStorage.getItem('userSessions');
-        const sessions = existing ? JSON.parse(existing) : [];
-        sessions.push(sessionData);
-        await AsyncStorage.setItem('userSessions', JSON.stringify(sessions));
-      } catch (err) {
-        console.error('Error saving session:', err);
-      }
+    try {
+      cleanup();
+      await saveSessionData(accuracy);
+      // Ensure the data is saved before navigating
+      await new Promise(resolve => setTimeout(resolve, 100));
+      router.back();
+    } catch (error) {
+      console.error('Error saving session data:', error);
+      router.back();
     }
-    router.back();
   };
 
   const formatTime = (seconds: number) => {
@@ -808,7 +836,6 @@ export default function BeatBridge() {
         style={styles.backgroundGradient}
       />
       
-      {/* Sending Overlay */}
       {isSending && (
         <Animated.View
           style={[
@@ -843,7 +870,6 @@ export default function BeatBridge() {
       )}
 
       <SafeAreaView style={styles.safeArea}>
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={endSession} style={styles.headerButton} activeOpacity={0.8}>
             <BlurView intensity={60} tint="dark" style={styles.headerButtonGlass}>
@@ -858,13 +884,17 @@ export default function BeatBridge() {
             <Text style={styles.title}>BEAT BRIDGE</Text>
           </LinearGradient>
 
-          <View style={styles.headerButton} />
+          <Animated.View style={{ opacity: helpIconOpacity }}>
+            <TouchableOpacity onPress={() => setIsHelpModalVisible(true)} style={styles.headerButton} activeOpacity={0.8}>
+              <BlurView intensity={60} tint="dark" style={styles.headerButtonGlass}>
+                <HelpCircle size={20} color="#FFFFFF" strokeWidth={2} />
+              </BlurView>
+            </TouchableOpacity>
+          </Animated.View>
         </View>
 
-        {/* Magical Word Bridge */}
         <View style={styles.bridgeSection}>
           <BlurView intensity={100} tint="dark" style={styles.bridgeContainer}>
-            {/* Animated Rainbow Background */}
             <Animated.View
               style={[
                 styles.rainbowBackground,
@@ -879,7 +909,6 @@ export default function BeatBridge() {
               />
             </Animated.View>
 
-            {/* Floating Word Bubbles */}
             <View style={styles.wordBubbleContainer}>
               {words.map((word, idx) => {
                 const isActive = idx === currentWordIndex && isPlaying;
@@ -940,7 +969,6 @@ export default function BeatBridge() {
               })}
             </View>
 
-            {/* Magical Bridge Path */}
             <View style={styles.bridgePath}>
               <LinearGradient
                 colors={['transparent', '#8B5CF6', '#A855F7', '#EC4899', 'transparent']}
@@ -959,14 +987,13 @@ export default function BeatBridge() {
           </BlurView>
         </View>
 
-        {/* Tempo Control */}
         <View style={styles.tempoSection}>
           <BlurView intensity={60} tint="dark" style={styles.tempoContainer}>
             <View style={styles.tempoContent}>
               <Text style={styles.tempoLabel}>tempo</Text>
               <View style={styles.tempoRow}>
                 <TouchableOpacity
-                  onPress={() => adjustTempo(-5)} // Changed from -10 to -5
+                  onPress={() => adjustTempo(-TEMPO_ADJUSTMENT_STEP)}
                   style={styles.tempoButton}
                   activeOpacity={0.8}
                 >
@@ -981,7 +1008,7 @@ export default function BeatBridge() {
                 </View>
                 
                 <TouchableOpacity
-                  onPress={() => adjustTempo(5)} // Changed from 10 to 5
+                  onPress={() => adjustTempo(TEMPO_ADJUSTMENT_STEP)}
                   style={styles.tempoButton}
                   activeOpacity={0.8}
                 >
@@ -994,7 +1021,6 @@ export default function BeatBridge() {
           </BlurView>
         </View>
 
-        {/* Stats */}
         <View style={styles.statsSection}>
           <View style={styles.statsContainer}>
             <View style={styles.statCard}>
@@ -1012,7 +1038,6 @@ export default function BeatBridge() {
           </View>
         </View>
 
-        {/* Controls */}
         <View style={styles.controlsSection}>
           <TouchableOpacity
             onPress={resetSession}
@@ -1056,7 +1081,6 @@ export default function BeatBridge() {
         </View>
       </SafeAreaView>
 
-      {/* Speech Analysis Modal - EXACTLY like storytelling.tsx but WIDER */}
       <Modal
         visible={showAnalysisModal}
         animationType="fade"
@@ -1070,7 +1094,6 @@ export default function BeatBridge() {
                 colors={['rgba(0, 8, 20, 0.95)', 'rgba(0, 29, 61, 0.9)']}
                 style={styles.modalGradient}
               >
-                {/* Modal Header */}
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>beat bridge results</Text>
                   <TouchableOpacity
@@ -1081,10 +1104,8 @@ export default function BeatBridge() {
                   </TouchableOpacity>
                 </View>
 
-                {/* Analysis Content */}
                 {speechAnalysis && (
                   <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-                    {/* Your Speech */}
                     <View style={styles.storySection}>
                       <Text style={styles.storySectionTitle}>what you said</Text>
                       <View style={styles.storyContainer}>
@@ -1094,7 +1115,6 @@ export default function BeatBridge() {
                       </View>
                     </View>
 
-                    {/* Stats Row */}
                     <View style={styles.statsRow}>
                       <View style={styles.statItem}>
                         <Text style={styles.statValue}>{Math.round(speechAnalysis.confidence * 100)}%</Text>
@@ -1112,7 +1132,6 @@ export default function BeatBridge() {
                       </View>
                     </View>
 
-                    {/* Accuracy Analysis */}
                     <View style={styles.fluencySection}>
                       <View style={styles.fluencyHeader}>
                         <Text style={styles.fluencyTitle}>word accuracy</Text>
@@ -1147,7 +1166,6 @@ export default function BeatBridge() {
                       </View>
                     </View>
 
-                    {/* Quality */}
                     <View style={styles.qualitySection}>
                       <View style={styles.qualityHeader}>
                         <Text style={styles.qualityTitle}>speech quality</Text>
@@ -1167,7 +1185,6 @@ export default function BeatBridge() {
                       </View>
                     </View>
 
-                    {/* Action Button */}
                     <View style={styles.buttonContainer}>
                       <TouchableOpacity 
                         onPress={() => {
@@ -1193,6 +1210,72 @@ export default function BeatBridge() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={isHelpModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setIsHelpModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setIsHelpModalVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.helpModalContainer}>
+                <BlurView intensity={90} tint="dark" style={styles.modalBlur}>
+                  <LinearGradient
+                    colors={['rgba(15, 23, 42, 0.98)', 'rgba(30, 41, 59, 0.95)']}
+                    style={styles.helpModalGradient}
+                  >
+                    <View style={styles.modalHeader}>
+                      <Text style={styles.modalTitle}>how to play</Text>
+                      <TouchableOpacity
+                        onPress={() => setIsHelpModalVisible(false)}
+                        style={styles.modalCloseButton}
+                      >
+                        <X size={16} color="rgba(232, 244, 253, 0.8)" strokeWidth={1.5} />
+                      </TouchableOpacity>
+                    </View>
+                    
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                      <View style={styles.helpStep}>
+                        <Text style={styles.helpStepNumber}>1</Text>
+                        <Text style={styles.helpStepText}>
+                          Press the Play button to start the exercise. The words will light up one by one.
+                        </Text>
+                      </View>
+                      <View style={styles.helpStep}>
+                        <Text style={styles.helpStepNumber}>2</Text>
+                        <Text style={styles.helpStepText}>
+                          As the words light up, speak them aloud clearly. The app is listening!
+                        </Text>
+                      </View>
+                      <View style={styles.helpStep}>
+                        <Text style={styles.helpStepNumber}>3</Text>
+                        <Text style={styles.helpStepText}>
+                          Use the Tempo controls to speed up or slow down the pace of the words.
+                        </Text>
+                      </View>
+                      <View style={styles.helpStep}>
+                        <Text style={styles.helpStepNumber}>4</Text>
+                        <Text style={styles.helpStepText}>
+                          After the sequence is complete, your speech will be analyzed. Review your results for accuracy and clarity.
+                        </Text>
+                      </View>
+                      <View style={styles.helpStep}>
+                        <Text style={styles.helpStepNumber}>5</Text>
+                        <Text style={styles.helpStepText}>
+                          Press the Reset button to start a new sentence at any time.
+                        </Text>
+                      </View>
+                    </ScrollView>
+
+                  </LinearGradient>
+                </BlurView>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </View>
   );
 }
@@ -1213,8 +1296,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
   },
-
-  // Sending Overlay
   sendingOverlay: {
     position: 'absolute',
     top: 0,
@@ -1252,8 +1333,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '600',
   },
-
-  // Header
   header: {
     marginTop: 20,
     flexDirection: 'row',
@@ -1285,8 +1364,6 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
     textAlign: 'center',
   },
-
-  // Bridge Section
   bridgeSection: {
     flex: 1,
     marginBottom: 28,
@@ -1432,8 +1509,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-
-  // Tempo
   tempoSection: {
     marginBottom: 18,
   },
@@ -1484,8 +1559,6 @@ const styles = StyleSheet.create({
     color: '#8B5CF6',
     marginTop: 1,
   },
-
-  // Stats
   statsSection: {
     marginBottom: 18,
   },
@@ -1513,8 +1586,6 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     letterSpacing: 0.5,
   },
-
-  // Controls
   controlsSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1568,17 +1639,15 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#EF4444',
   },
-
-  // Modal Styles - WIDER than storytelling.tsx
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 20, // Reduced from 40 to make modal wider
+    paddingHorizontal: 20,
   },
   modalContainer: {
-    width: Math.min(400, width - 40), // Increased max width from 320 to 400
+    width: Math.min(400, width - 40),
     borderRadius: 20,
     overflow: 'hidden',
     shadowColor: '#8B5CF6',
@@ -1618,8 +1687,6 @@ const styles = StyleSheet.create({
   modalContent: {
     gap: 16,
   },
-
-  // Story Section
   storySection: {
     marginBottom: 16,
   },
@@ -1648,8 +1715,6 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
     letterSpacing: 0.3,
   },
-
-  // Stats Row
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1685,8 +1750,6 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
     marginTop: 2,
   },
-
-  // Fluency Section
   fluencySection: {
     backgroundColor: 'rgba(16, 185, 129, 0.08)',
     borderRadius: 12,
@@ -1739,8 +1802,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 0.2,
   },
-
-  // Quality Section
   qualitySection: {
     backgroundColor: 'rgba(0, 0, 0, 0.2)',
     borderRadius: 12,
@@ -1781,8 +1842,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#8B5CF6',
     borderRadius: 2,
   },
-
-  // New Story Button
   buttonContainer: {
     marginTop: 16,
     alignItems: 'center',
@@ -1806,5 +1865,40 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '500',
     textAlign: 'center',
+  },
+  helpModalContainer: {
+    width: Math.min(400, width - 40),
+    maxHeight: '70%',
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.2)',
+  },
+  helpModalGradient: {
+    paddingVertical: 24,
+    paddingHorizontal: 24,
+  },
+  helpStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+  helpStepNumber: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#8B5CF6',
+    marginRight: 12,
+    width: 24,
+    height: 24,
+    textAlign: 'center',
+    lineHeight: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+  },
+  helpStepText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#CBD5E1',
+    lineHeight: 20,
   },
 });
