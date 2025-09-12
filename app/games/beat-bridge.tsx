@@ -8,6 +8,9 @@ import {
   Alert,
   Animated,
   Easing,
+  Modal,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -20,10 +23,13 @@ import {
   Mic,
   Plus,
   Minus,
+  X,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
+
+const { width } = Dimensions.get('window');
 
 const SAMPLE_SENTENCES = [
   'The quick brown fox jumps over the lazy dog.',
@@ -96,6 +102,22 @@ const getRandomPhrase = (): string[] => {
   return randomSentence.replace(/\s+/g, ' ').trim().split(' ');
 };
 
+interface SpeechAnalysis {
+  transcript: string;
+  confidence: number;
+  words: Array<{
+    text: string;
+    confidence: number;
+    start: number;
+    end: number;
+  }>;
+  duration: number;
+  wordCount: number;
+  correctWords: number;
+  totalWords: number;
+  accuracy: number;
+}
+
 export default function BeatBridge() {
   const [words, setWords] = useState<string[]>(() => getRandomPhrase());
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
@@ -103,13 +125,15 @@ export default function BeatBridge() {
   const [isRecording, setIsRecording] = useState(false);
   const [sessionTime, setSessionTime] = useState(0);
   const [completedSentences, setCompletedSentences] = useState(0);
-  const [tempo, setTempo] = useState(120);
+  const [tempo, setTempo] = useState(25); // Changed from 120 to 25
   const [correctWords, setCorrectWords] = useState<boolean[]>([]);
   const [completedWordsIndices, setCompletedWordsIndices] = useState<number[]>([]);
   const [accuracy, setAccuracy] = useState(0);
   const [gamePhase, setGamePhase] = useState<'waiting' | 'playing' | 'analyzing'>('waiting');
   const [isSending, setIsSending] = useState(false);
   const [sendingMessage, setSendingMessage] = useState("Processing your speech...");
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+  const [speechAnalysis, setSpeechAnalysis] = useState<SpeechAnalysis | null>(null);
 
   const beatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -121,8 +145,6 @@ export default function BeatBridge() {
   const sendingFadeAnim = useRef(new Animated.Value(0)).current;
   const sendingScaleAnim = useRef(new Animated.Value(0.8)).current;
 
-  const WORD_CADENCE_SPEED = 2000;
-
   useEffect(() => {
     generateNewSentence();
     startBridgeGlow();
@@ -131,15 +153,15 @@ export default function BeatBridge() {
     };
   }, []);
 
-useEffect(() => {
-  if (isPlaying) {
-    startBeat();
-    startSessionTimer();
-  } else {
-    stopBeat();
-    stopSessionTimer();
-  }
-}, [isPlaying, tempo]);
+  useEffect(() => {
+    if (isPlaying) {
+      startBeat();
+      startSessionTimer();
+    } else {
+      stopBeat();
+      stopSessionTimer();
+    }
+  }, [isPlaying, tempo]);
 
   useEffect(() => {
     wordAnimations.length = 0;
@@ -251,10 +273,12 @@ useEffect(() => {
 
   const startBeat = () => {
     stopBeat();
-    const beatInterval = Math.max(300, 60000 / tempo);
+    // Use tempo to calculate beat interval: 60000ms / BPM = ms per beat
+    const beatInterval = Math.max(500, 60000 / tempo); // Minimum 500ms for slow tempos
+    console.log(`Beat interval: ${beatInterval}ms for tempo ${tempo} BPM`);
+    
     beatIntervalRef.current = setInterval(() => {
       setCurrentWordIndex(prevIndex => {
-
         if (wordAdvanceInterval.current !== null) {
           return prevIndex;
         }
@@ -295,7 +319,9 @@ useEffect(() => {
     setCurrentWordIndex(0);
     stopWordCadence();
 
-    const totalTime = (words.length * WORD_CADENCE_SPEED) + 2000;
+    // Use tempo for word cadence too: 60000ms / tempo = ms per word
+    const WORD_CADENCE_SPEED = Math.max(800, 60000 / tempo); // Minimum 800ms for slow tempos
+    const totalTime = (words.length * WORD_CADENCE_SPEED) + 1000; // Reduced delay before auto-submit
 
     let wordIndex = 0;
     const intervalId = setInterval(() => {
@@ -304,12 +330,13 @@ useEffect(() => {
         setCurrentWordIndex(wordIndex);
       } else {
         clearInterval(intervalId);
+        // Auto-submit after last word is done
+        console.log('Last word completed, auto-submitting...');
+        setTimeout(() => {
+          stopExercise();
+        }, 500); // Small delay to show the last word highlight
       }
     }, WORD_CADENCE_SPEED);
-
-    wordCadenceTimeoutRef.current = setTimeout(() => {
-      stopExercise();
-    }, totalTime);
 
     wordAdvanceInterval.current = intervalId;
   };
@@ -353,8 +380,7 @@ useEffect(() => {
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
-              staysActiveInBackground: false,
-
+        staysActiveInBackground: false,
       });
       return true;
     } catch (err: any) {
@@ -364,60 +390,56 @@ useEffect(() => {
     }
   };
 
-const startRecording = async (): Promise<void> => {
-  if (isRecording) return;
-  
-  const audioReady = await setupAudio();
-  if (!audioReady) {
-    setIsRecording(false);
-    throw new Error("Audio setup failed.");
-  }
-
-  try {
-    // Simplified recording configuration that works reliably
-    const recordingConfig: Audio.RecordingOptions = {
-      android: {
-        extension: '.wav',
-        outputFormat: Audio.AndroidOutputFormat.DEFAULT,
-        audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
-        sampleRate: 16000,
-        numberOfChannels: 1,
-        bitRate: 128000,
-      },
-      ios: {
-        extension: '.wav',
-        audioQuality: Audio.IOSAudioQuality.HIGH,
-        sampleRate: 16000,
-        numberOfChannels: 1,
-        bitRate: 128000,
-        linearPCMBitDepth: 16,
-        linearPCMIsBigEndian: false,
-        linearPCMIsFloat: false,
-      },
-      web: {
-        mimeType: 'audio/wav',
-        bitsPerSecond: 128000,
-      }
-    };
-
-    const { recording } = await Audio.Recording.createAsync(recordingConfig);
-    recordingRef.current = recording;
+  const startRecording = async (): Promise<void> => {
+    if (isRecording) return;
     
-    await recording.startAsync();
-    setIsRecording(true);
-    console.log('Recording started successfully');
+    const audioReady = await setupAudio();
+    if (!audioReady) {
+      setIsRecording(false);
+      throw new Error("Audio setup failed.");
+    }
 
-  } catch (error: any) {
-    console.error('Failed to start recording:', error);
-    Alert.alert('Recording Error', 'Could not start recording: ' + error.message);
-    setIsRecording(false);
-    throw error;
-  }
-};
+    try {
+      const recordingConfig: Audio.RecordingOptions = {
+        android: {
+          extension: '.wav',
+          outputFormat: Audio.AndroidOutputFormat.DEFAULT,
+          audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
+          sampleRate: 16000,
+          numberOfChannels: 1,
+          bitRate: 128000,
+        },
+        ios: {
+          extension: '.wav',
+          audioQuality: Audio.IOSAudioQuality.HIGH,
+          sampleRate: 16000,
+          numberOfChannels: 1,
+          bitRate: 128000,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+        web: {
+          mimeType: 'audio/wav',
+          bitsPerSecond: 128000,
+        }
+      };
 
+      const { recording } = await Audio.Recording.createAsync(recordingConfig);
+      recordingRef.current = recording;
+      
+      await recording.startAsync();
+      setIsRecording(true);
+      console.log('Recording started successfully');
 
+    } catch (error: any) {
+      console.error('Failed to start recording:', error);
+      Alert.alert('Recording Error', 'Could not start recording: ' + error.message);
+      setIsRecording(false);
+      throw error;
+    }
+  };
 
-  // Stop recording
   const stopRecording = async (): Promise<string | null> => {
     setIsRecording(false);
 
@@ -454,174 +476,169 @@ const startRecording = async (): Promise<void> => {
       return null;
     }
   };
-function atob(input: string): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-  let str = input.replace(/=+$/, '');
-  let output = '';
 
-  if (str.length % 4 == 1) {
-    throw new Error("'atob' failed: The string to be decoded is not correctly encoded.");
+  function atob(input: string): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+    let str = input.replace(/=+$/, '');
+    let output = '';
+
+    if (str.length % 4 == 1) {
+      throw new Error("'atob' failed: The string to be decoded is not correctly encoded.");
+    }
+
+    for (let bc = 0, bs = 0, buffer, i = 0;
+      buffer = str.charAt(i++);
+      ~buffer && (bs = bc % 4 ? bs * 64 + buffer : buffer,
+        bc++ % 4) ? output += String.fromCharCode(255 & bs >> (-2 * bc & 6)) : 0
+    ) {
+      buffer = chars.indexOf(buffer);
+    }
+
+    return output;
   }
 
-  for (let bc = 0, bs = 0, buffer, i = 0;
-    buffer = str.charAt(i++);
-    ~buffer && (bs = bc % 4 ? bs * 64 + buffer : buffer,
-      bc++ % 4) ? output += String.fromCharCode(255 & bs >> (-2 * bc & 6)) : 0
-  ) {
-    buffer = chars.indexOf(buffer);
-  }
+  const pollForTranscription = async (transcriptId: string): Promise<any> => {
+    const maxAttempts = 60;
+    let attempts = 0;
 
-  return output;
-}
+    return new Promise((resolve, reject) => {
+      const poll = async () => {
+        attempts++;
 
-// Add the polling function
-const pollForTranscription = async (transcriptId: string): Promise<any> => {
-  const maxAttempts = 60;
-  let attempts = 0;
-
-  return new Promise((resolve, reject) => {
-    const poll = async () => {
-      attempts++;
-
-      if (attempts > maxAttempts) {
-        reject(new Error('Transcription timed out'));
-        return;
-      }
-
-      try {
-        const response = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
-          headers: {
-            'authorization': ASSEMBLYAI_API_KEY,
-          },
-        });
-
-        if (!response.ok) {
-          reject(new Error(`Polling failed: ${response.status}`));
+        if (attempts > maxAttempts) {
+          reject(new Error('Transcription timed out'));
           return;
         }
 
-        const result = await response.json();
+        try {
+          const response = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
+            headers: {
+              'authorization': ASSEMBLYAI_API_KEY,
+            },
+          });
 
-        if (result.status === 'completed') {
-          resolve(result);
-        } else if (result.status === 'error') {
-          reject(new Error(`Transcription failed: ${result.error}`));
-        } else {
-          setSendingMessage(`Transcribing... (${Math.round(attempts * 5)}s)`);
-          setTimeout(poll, 5000);
+          if (!response.ok) {
+            reject(new Error(`Polling failed: ${response.status}`));
+            return;
+          }
+
+          const result = await response.json();
+
+          if (result.status === 'completed') {
+            resolve(result);
+          } else if (result.status === 'error') {
+            reject(new Error(`Transcription failed: ${result.error}`));
+          } else {
+            setSendingMessage(`Transcribing... (${Math.round(attempts * 5)}s)`);
+            setTimeout(poll, 5000);
+          }
+        } catch (error) {
+          reject(error);
         }
-      } catch (error) {
-        reject(error);
+      };
+      poll();
+    });
+  };
+
+  const processAudioWithAssemblyAI = async (audioUri: string) => {
+    try {
+      setSendingMessage("Preparing audio file...");
+
+      const fileInfo = await FileSystem.getInfoAsync(audioUri);
+      console.log('File info:', fileInfo);
+
+      if (!fileInfo.exists || fileInfo.size === 0) {
+        throw new Error('Recording file is empty or does not exist');
       }
-    };
-    poll();
-  });
-};
 
-// Replace the processAudioWithAssemblyAI function completely
-const processAudioWithAssemblyAI = async (audioUri: string) => {
-  try {
-    setSendingMessage("Preparing audio file...");
+      setSendingMessage("Reading audio file...");
 
-    const fileInfo = await FileSystem.getInfoAsync(audioUri);
-    console.log('File info:', fileInfo);
+      const audioData = await FileSystem.readAsStringAsync(audioUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
 
-    if (!fileInfo.exists || fileInfo.size === 0) {
-      throw new Error('Recording file is empty or does not exist');
+      if (!audioData || audioData.length === 0) {
+        throw new Error('Audio file appears to be empty');
+      }
+
+      setSendingMessage("Uploading audio file...");
+
+      const binaryString = atob(audioData);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      console.log('Audio file size:', bytes.length, 'bytes');
+
+      const uploadResponse = await fetch('https://api.assemblyai.com/v2/upload', {
+        method: 'POST',
+        headers: {
+          'authorization': ASSEMBLYAI_API_KEY,
+          'content-type': 'application/octet-stream',
+        },
+        body: bytes,
+      });
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        console.error('Upload error response:', errorText);
+        throw new Error(`Upload failed: ${uploadResponse.status} - ${errorText}`);
+      }
+
+      const uploadResult = await uploadResponse.json();
+      console.log('Upload result:', uploadResult);
+
+      if (!uploadResult.upload_url) {
+        throw new Error('No upload URL returned from AssemblyAI');
+      }
+
+      const audioUrl = uploadResult.upload_url;
+
+      setSendingMessage("Starting transcription...");
+
+      const transcriptResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
+        method: 'POST',
+        headers: {
+          'authorization': ASSEMBLYAI_API_KEY,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          audio_url: audioUrl,
+          speech_model: 'best',
+          punctuate: true,
+          format_text: true,
+          language_code: 'en',
+        }),
+      });
+
+      if (!transcriptResponse.ok) {
+        const errorText = await transcriptResponse.text();
+        console.error('Transcription request error:', errorText);
+        throw new Error(`Transcription request failed: ${transcriptResponse.status} - ${errorText}`);
+      }
+
+      const transcriptResult = await transcriptResponse.json();
+      console.log('Transcription request result:', transcriptResult);
+
+      if (!transcriptResult.id) {
+        throw new Error('No transcript ID returned from AssemblyAI');
+      }
+
+      const transcriptId = transcriptResult.id;
+
+      setSendingMessage("Transcribing your speech...");
+
+      const finalTranscript = await pollForTranscription(transcriptId);
+      analyzeTranscriptForMatches(finalTranscript);
+
+    } catch (error: any) {
+      console.error('AssemblyAI Error:', error);
+      Alert.alert('Speech Processing Error', error.message || 'Failed to process speech. Please try again.');
+      setIsSending(false);
     }
+  };
 
-    setSendingMessage("Reading audio file...");
-
-    // Read file as base64
-    const audioData = await FileSystem.readAsStringAsync(audioUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    if (!audioData || audioData.length === 0) {
-      throw new Error('Audio file appears to be empty');
-    }
-
-    setSendingMessage("Uploading audio file...");
-
-    // Convert base64 to binary using atob polyfill
-    const binaryString = atob(audioData);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-
-    console.log('Audio file size:', bytes.length, 'bytes');
-
-    // Upload as binary data with correct headers
-    const uploadResponse = await fetch('https://api.assemblyai.com/v2/upload', {
-      method: 'POST',
-      headers: {
-        'authorization': ASSEMBLYAI_API_KEY,
-        'content-type': 'application/octet-stream',
-      },
-      body: bytes,
-    });
-
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      console.error('Upload error response:', errorText);
-      throw new Error(`Upload failed: ${uploadResponse.status} - ${errorText}`);
-    }
-
-    const uploadResult = await uploadResponse.json();
-    console.log('Upload result:', uploadResult);
-
-    if (!uploadResult.upload_url) {
-      throw new Error('No upload URL returned from AssemblyAI');
-    }
-
-    const audioUrl = uploadResult.upload_url;
-
-    setSendingMessage("Starting transcription...");
-
-    // Request transcription
-    const transcriptResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
-      method: 'POST',
-      headers: {
-        'authorization': ASSEMBLYAI_API_KEY,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        audio_url: audioUrl,
-        speech_model: 'best',
-        punctuate: true,
-        format_text: true,
-        language_code: 'en',
-      }),
-    });
-
-    if (!transcriptResponse.ok) {
-      const errorText = await transcriptResponse.text();
-      console.error('Transcription request error:', errorText);
-      throw new Error(`Transcription request failed: ${transcriptResponse.status} - ${errorText}`);
-    }
-
-    const transcriptResult = await transcriptResponse.json();
-    console.log('Transcription request result:', transcriptResult);
-
-    if (!transcriptResult.id) {
-      throw new Error('No transcript ID returned from AssemblyAI');
-    }
-
-    const transcriptId = transcriptResult.id;
-
-    setSendingMessage("Transcribing your speech...");
-
-    // Poll for completion
-    const finalTranscript = await pollForTranscription(transcriptId);
-    analyzeTranscriptForMatches(finalTranscript);
-
-  } catch (error: any) {
-    console.error('AssemblyAI Error:', error);
-    Alert.alert('Speech Processing Error', error.message || 'Failed to process speech. Please try again.');
-    setIsSending(false);
-  }
-};
   const analyzeTranscriptForMatches = (transcriptResult: any) => {
     const transcript = transcriptResult?.text || '';
 
@@ -631,16 +648,26 @@ const processAudioWithAssemblyAI = async (audioUri: string) => {
     }
 
     const spokenWords = transcript.toLowerCase().split(/\s+/).filter(Boolean);
+    console.log('Spoken words:', spokenWords);
+    console.log('Expected words:', words);
+    
     let matchedWords = 0;
-
+    const expectedWordsLower = words.map(w => w.toLowerCase().replace(/[^\w]/g, '')); // Remove punctuation
+    
+    // Count matches more accurately
     spokenWords.forEach((spokenWord: string) => {
-      words.forEach((expectedWord, index) => {
-        if (!completedWordsIndices.includes(index) && wordsMatch(spokenWord, expectedWord)) {
-          markWordAsCompleted(index);
+      const cleanSpokenWord = spokenWord.replace(/[^\w]/g, ''); // Remove punctuation
+      expectedWordsLower.forEach((expectedWord) => {
+        if (wordsMatch(cleanSpokenWord, expectedWord)) {
           matchedWords++;
         }
       });
     });
+
+    // Ensure we don't exceed the total number of expected words
+    matchedWords = Math.min(matchedWords, words.length);
+    
+    console.log(`Matched ${matchedWords} out of ${words.length} words`);
 
     showGameResults(transcriptResult, matchedWords);
   };
@@ -656,6 +683,23 @@ const processAudioWithAssemblyAI = async (audioUri: string) => {
 
     setAccuracy(wordAccuracyPercentage);
     setGamePhase('waiting');
+
+    // Create speech analysis for modal
+    if (transcriptResult) {
+      const analysis: SpeechAnalysis = {
+        transcript: transcriptResult.text || '',
+        confidence: transcriptResult.confidence || 0,
+        words: transcriptResult.words || [],
+        duration: sessionTime,
+        wordCount: transcriptResult.text ? transcriptResult.text.split(' ').filter((word: string) => word.length > 0).length : 0,
+        correctWords: matchedWords || 0,
+        totalWords: totalWords,
+        accuracy: wordAccuracyPercentage,
+      };
+
+      setSpeechAnalysis(analysis);
+      setShowAnalysisModal(true);
+    }
   };
 
   const startExercise = async () => {
@@ -718,7 +762,7 @@ const processAudioWithAssemblyAI = async (audioUri: string) => {
   };
 
   const adjustTempo = (change: number) => {
-    const newTempo = Math.max(60, Math.min(180, tempo + change));
+    const newTempo = Math.max(15, Math.min(100, tempo + change)); // Changed max from 180 to 100
     setTempo(newTempo);
   };
 
@@ -922,7 +966,7 @@ const processAudioWithAssemblyAI = async (audioUri: string) => {
               <Text style={styles.tempoLabel}>tempo</Text>
               <View style={styles.tempoRow}>
                 <TouchableOpacity
-                  onPress={() => adjustTempo(-10)}
+                  onPress={() => adjustTempo(-5)} // Changed from -10 to -5
                   style={styles.tempoButton}
                   activeOpacity={0.8}
                 >
@@ -937,7 +981,7 @@ const processAudioWithAssemblyAI = async (audioUri: string) => {
                 </View>
                 
                 <TouchableOpacity
-                  onPress={() => adjustTempo(10)}
+                  onPress={() => adjustTempo(5)} // Changed from 10 to 5
                   style={styles.tempoButton}
                   activeOpacity={0.8}
                 >
@@ -1011,6 +1055,144 @@ const processAudioWithAssemblyAI = async (audioUri: string) => {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      {/* Speech Analysis Modal - EXACTLY like storytelling.tsx but WIDER */}
+      <Modal
+        visible={showAnalysisModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowAnalysisModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <BlurView intensity={80} tint="dark" style={styles.modalBlur}>
+              <LinearGradient
+                colors={['rgba(0, 8, 20, 0.95)', 'rgba(0, 29, 61, 0.9)']}
+                style={styles.modalGradient}
+              >
+                {/* Modal Header */}
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>beat bridge results</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowAnalysisModal(false)}
+                    style={styles.modalCloseButton}
+                  >
+                    <X size={16} color="rgba(232, 244, 253, 0.8)" strokeWidth={1.5} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Analysis Content */}
+                {speechAnalysis && (
+                  <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+                    {/* Your Speech */}
+                    <View style={styles.storySection}>
+                      <Text style={styles.storySectionTitle}>what you said</Text>
+                      <View style={styles.storyContainer}>
+                        <Text style={styles.storyText}>
+                          {speechAnalysis.transcript || 'No speech detected'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Stats Row */}
+                    <View style={styles.statsRow}>
+                      <View style={styles.statItem}>
+                        <Text style={styles.statValue}>{Math.round(speechAnalysis.confidence * 100)}%</Text>
+                        <Text style={styles.statLabel}>clarity</Text>
+                      </View>
+                      <View style={styles.statDivider} />
+                      <View style={styles.statItem}>
+                        <Text style={styles.statValue}>{speechAnalysis.correctWords}/{speechAnalysis.totalWords}</Text>
+                        <Text style={styles.statLabel}>words</Text>
+                      </View>
+                      <View style={styles.statDivider} />
+                      <View style={styles.statItem}>
+                        <Text style={styles.statValue}>{formatTime(speechAnalysis.duration)}</Text>
+                        <Text style={styles.statLabel}>time</Text>
+                      </View>
+                    </View>
+
+                    {/* Accuracy Analysis */}
+                    <View style={styles.fluencySection}>
+                      <View style={styles.fluencyHeader}>
+                        <Text style={styles.fluencyTitle}>word accuracy</Text>
+                        <Text style={styles.fluencyScore}>
+                          {speechAnalysis.accuracy >= 90 ? 'perfect!' :
+                           speechAnalysis.accuracy >= 75 ? 'excellent!' :
+                           speechAnalysis.accuracy >= 60 ? 'great job!' :
+                           speechAnalysis.accuracy >= 40 ? 'good effort!' :
+                           'keep practicing!'}
+                        </Text>
+                      </View>
+                      <View style={styles.fluencyBar}>
+                        <View 
+                          style={[
+                            styles.fluencyBarFill, 
+                            { width: `${Math.max(10, speechAnalysis.accuracy)}%` }
+                          ]} 
+                        />
+                      </View>
+                      <View style={styles.fluencyStats}>
+                        <Text style={styles.fluencyText}>
+                          {speechAnalysis.correctWords === speechAnalysis.totalWords 
+                            ? 'amazing! you got every word perfectly!' 
+                            : speechAnalysis.accuracy >= 80
+                            ? 'fantastic rhythm and timing!'
+                            : speechAnalysis.accuracy >= 60
+                            ? 'wonderful progress with the beat!'
+                            : speechAnalysis.accuracy >= 40
+                            ? 'good start! keep practicing with the tempo'
+                            : 'building great speaking skills step by step!'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Quality */}
+                    <View style={styles.qualitySection}>
+                      <View style={styles.qualityHeader}>
+                        <Text style={styles.qualityTitle}>speech quality</Text>
+                        <Text style={styles.qualityScore}>
+                          {speechAnalysis.confidence > 0.8 ? 'crystal clear!' : 
+                           speechAnalysis.confidence > 0.6 ? 'very clear!' : 
+                           speechAnalysis.confidence > 0.4 ? 'quite clear!' : 'getting clearer!'}
+                        </Text>
+                      </View>
+                      <View style={styles.qualityBar}>
+                        <View 
+                          style={[
+                            styles.qualityBarFill, 
+                            { width: `${Math.max(25, speechAnalysis.confidence * 100)}%` }
+                          ]} 
+                        />
+                      </View>
+                    </View>
+
+                    {/* Action Button */}
+                    <View style={styles.buttonContainer}>
+                      <TouchableOpacity 
+                        onPress={() => {
+                          setShowAnalysisModal(false);
+                          generateNewSentence();
+                        }}
+                        style={styles.newStoryButton}
+                      >
+                        <BlurView intensity={60} tint="dark" style={styles.newStoryButtonBlur}>
+                          <LinearGradient
+                            colors={['rgba(139, 92, 246, 0.4)', 'rgba(139, 92, 246, 0.2)']}
+                            style={styles.newStoryButtonGradient}
+                          >
+                            <Text style={styles.newStoryButtonText}>try another sequence</Text>
+                          </LinearGradient>
+                        </BlurView>
+                      </TouchableOpacity>
+                    </View>
+                  </ScrollView>
+                )}
+              </LinearGradient>
+            </BlurView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1122,10 +1304,10 @@ const styles = StyleSheet.create({
   },
   rainbowBackground: {
     position: 'absolute',
-    top: '20%',
-    left: '10%',
-    right: '10%',
-    height: '50%',
+    top: '15%',
+    left: '5%',
+    right: '5%',
+    height: '70%',
     borderRadius: 50,
   },
   rainbowGradient: {
@@ -1138,23 +1320,29 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    paddingBottom: 50,
-    gap: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 25,
+    paddingBottom: 40,
+    gap: 8,
     zIndex: 10,
+    position: 'absolute',
+    top: '15%',
+    left: '5%',
+    right: '5%',
+    height: '70%',
   },
   wordBubble: {
-    borderRadius: 18,
+    borderRadius: 16,
     overflow: 'hidden',
-    marginHorizontal: 3,
-    marginVertical: 4,
+    marginHorizontal: 2,
+    marginVertical: 3,
     elevation: 5,
     shadowColor: '#8B5CF6',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     position: 'relative',
+    maxWidth: '45%',
   },
   activeWordBubble: {
     elevation: 15,
@@ -1177,15 +1365,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   wordBubbleGradient: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   word: {
-    fontSize: 15,
+    fontSize: 14,
     color: 'rgba(255, 255, 255, 0.8)',
     fontWeight: '600',
     textAlign: 'center',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
+    flexShrink: 1,
   },
   activeWord: {
     color: '#FFFFFF',
@@ -1207,9 +1396,9 @@ const styles = StyleSheet.create({
   },
   bridgePath: {
     position: 'absolute',
-    bottom: 15,
-    left: '15%',
-    right: '15%',
+    bottom: 10,
+    left: '10%',
+    right: '10%',
     height: 5,
     zIndex: 5,
   },
@@ -1229,6 +1418,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.3)',
+    zIndex: 20,
   },
   listeningDot: {
     width: 8,
@@ -1377,5 +1567,244 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#EF4444',
+  },
+
+  // Modal Styles - WIDER than storytelling.tsx
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 20, // Reduced from 40 to make modal wider
+  },
+  modalContainer: {
+    width: Math.min(400, width - 40), // Increased max width from 320 to 400
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+  },
+  modalBlur: {
+    borderRadius: 20,
+  },
+  modalGradient: {
+    paddingVertical: 24,
+    paddingHorizontal: 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '300',
+    color: '#E8F4FD',
+    letterSpacing: 1.5,
+    textTransform: 'lowercase',
+    fontFamily: 'System',
+  },
+  modalCloseButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    gap: 16,
+  },
+
+  // Story Section
+  storySection: {
+    marginBottom: 16,
+  },
+  storySectionTitle: {
+    fontSize: 12,
+    color: '#E8F4FD',
+    fontWeight: '300',
+    letterSpacing: 1,
+    textTransform: 'lowercase',
+    fontFamily: 'System',
+    marginBottom: 8,
+  },
+  storyContainer: {
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.15)',
+    minHeight: 80,
+  },
+  storyText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#E8F4FD',
+    fontWeight: '300',
+    fontFamily: 'System',
+    letterSpacing: 0.3,
+  },
+
+  // Stats Row
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.08)',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.15)',
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    marginHorizontal: 16,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: '200',
+    color: '#8B5CF6',
+    fontFamily: 'System',
+  },
+  statLabel: {
+    fontSize: 10,
+    color: 'rgba(139, 92, 246, 0.7)',
+    fontWeight: '200',
+    letterSpacing: 0.5,
+    textTransform: 'lowercase',
+    fontFamily: 'System',
+    marginTop: 2,
+  },
+
+  // Fluency Section
+  fluencySection: {
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.15)',
+    marginBottom: 12,
+  },
+  fluencyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  fluencyTitle: {
+    fontSize: 11,
+    color: '#E8F4FD',
+    fontWeight: '300',
+    letterSpacing: 1,
+    textTransform: 'lowercase',
+    fontFamily: 'System',
+  },
+  fluencyScore: {
+    fontSize: 11,
+    color: '#10B981',
+    fontWeight: '400',
+    textTransform: 'lowercase',
+    fontFamily: 'System',
+  },
+  fluencyBar: {
+    height: 4,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  fluencyBarFill: {
+    height: '100%',
+    backgroundColor: '#10B981',
+    borderRadius: 2,
+  },
+  fluencyStats: {
+    alignItems: 'center',
+  },
+  fluencyText: {
+    fontSize: 11,
+    color: 'rgba(16, 185, 129, 0.9)',
+    fontWeight: '300',
+    fontFamily: 'System',
+    textAlign: 'center',
+    letterSpacing: 0.2,
+  },
+
+  // Quality Section
+  qualitySection: {
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.1)',
+    marginBottom: 12,
+  },
+  qualityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  qualityTitle: {
+    fontSize: 11,
+    color: '#E8F4FD',
+    fontWeight: '300',
+    letterSpacing: 1,
+    textTransform: 'lowercase',
+    fontFamily: 'System',
+  },
+  qualityScore: {
+    fontSize: 11,
+    color: '#8B5CF6',
+    fontWeight: '400',
+    textTransform: 'lowercase',
+    fontFamily: 'System',
+  },
+  qualityBar: {
+    height: 4,
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  qualityBarFill: {
+    height: '100%',
+    backgroundColor: '#8B5CF6',
+    borderRadius: 2,
+  },
+
+  // New Story Button
+  buttonContainer: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  newStoryButton: {
+    width: '100%',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  newStoryButtonBlur: {
+    borderRadius: 12,
+  },
+  newStoryButtonGradient: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  newStoryButtonText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });

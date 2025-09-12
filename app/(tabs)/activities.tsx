@@ -7,15 +7,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 const activitiesData = [
     {
-        id: 'ai-conversations',
-        title: 'Neural Sync',
-        description: 'interface with adaptive ai consciousness',
-        icon: Brain,
-        gradient: ['#8B5CF6', '#A855F7'],
-        bgGradient: ['#8B5CF630', '#A855F715'],
-        route: '/games/dialogue-mode',
-    },
-    {
         id: 'rhythm-speech',
         title: 'Flow State',
         description: 'harmonize mind through rhythmic expression',

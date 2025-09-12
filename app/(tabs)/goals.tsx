@@ -1,894 +1,568 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Animated as RNAnimated, TextInput, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, StyleSheet, SafeAreaView, TouchableOpacity, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { Calendar, Clock, Trophy, Target, TrendingUp, Award, Check, Plus, Zap, Brain, Pen, Atom } from 'lucide-react-native';
+import { Clock, Target, TrendingUp, Award, Star, Flame, Calendar, CheckCircle } from 'lucide-react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, interpolate } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Animated, { 
-  useSharedValue, 
-  withTiming,
-  useAnimatedProps,
-  useAnimatedStyle
-} from 'react-native-reanimated';
-import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
-import Svg, { Circle } from 'react-native-svg';
+
+const { width } = Dimensions.get('window');
 
 interface SessionData {
   date: string;
   gameMode: string;
   duration: number;
   completed: boolean;
+  cycles?: number;
+  pattern?: string;
+  conversationCount?: number;
+  context?: string;
+  accuracy?: number;
+  correctWords?: number;
+  totalWords?: number;
 }
 
-interface UserStats {
-  totalSessions: number;
-  totalTimeSpent: number;
-  currentStreak: number;
-  sessionsThisWeek: number;
-  breathBreakersCount: number;
-  beatBridgeCount: number;
-  dialogueModeCount: number;
-  storytellingCount: number;
+interface GameStats {
+  totalTime: number;
+  sessionsCount: number;
+  averageSession: number;
+  lastPlayed: string;
 }
 
-interface Goal {
+interface GoalData {
   id: string;
   title: string;
-  completed: boolean;
+  description: string;
+  target: number;
+  current: number;
+  unit: string;
+  gameMode: string;
+  type: 'daily' | 'weekly' | 'milestone';
+  icon: any;
+  gradient: string[];
 }
 
-export default function GoalsPage() {
-  const [stats, setStats] = useState<UserStats>({
-    totalSessions: 0,
-    totalTimeSpent: 0,
-    currentStreak: 0,
-    sessionsThisWeek: 0,
-    breathBreakersCount: 0,
-    beatBridgeCount: 0,
-    dialogueModeCount: 0,
-    storytellingCount: 0,
-  });
-  const [goals, setGoals] = useState<Goal[]>([
-    { id: '1', title: 'chat with ai friends', completed: false },
-    { id: '2', title: 'practice calm breathing', completed: false },
-    { id: '3', title: 'tell creative stories', completed: false },
-    { id: '4', title: 'complete a dialogue mode', completed: false },
-  ]);
+export default function Goals() {
+  const [userSessions, setUserSessions] = useState<SessionData[]>([]);
+  const [gameStats, setGameStats] = useState<Record<string, GameStats>>({});
+  const [goals, setGoals] = useState<GoalData[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const progressValue = useSharedValue(0);
-  const swipeableRefs = useRef<{ [key: string]: Swipeable | null }>({});
-  
-  const setSwipeableRef = useCallback((id: string, ref: Swipeable | null) => {
-    if (ref) {
-      swipeableRefs.current[id] = ref;
-    }
-  }, []);
+  // Animation values
+  const progressAnimations = useSharedValue<Record<string, number>>({});
 
   useEffect(() => {
-    loadUserStats();
-    loadGoals();
+    loadUserData();
   }, []);
 
-  useEffect(() => {
-    const completedGoals = goals.filter(goal => goal.completed).length;
-    const totalGoals = goals.length;
-    const progressPercentage = totalGoals > 0 ? (completedGoals / totalGoals) * 100 : 0;
-    progressValue.value = withTiming(progressPercentage, { duration: 1000 });
-  }, [goals]);
-
-  const loadUserStats = async () => {
+  const loadUserData = async () => {
     try {
       const sessionsData = await AsyncStorage.getItem('userSessions');
-      if (sessionsData) {
-        const sessions: SessionData[] = JSON.parse(sessionsData);
-        calculateStats(sessions);
-      }
-    } catch (error) {
-      console.error('Error loading user stats:', error);
-    }
-  };
-
-  const loadGoals = async () => {
-    try {
-      const goalsData = await AsyncStorage.getItem('userGoals');
-      if (goalsData) {
-        setGoals(JSON.parse(goalsData));
-      }
-    } catch (error) {
-      console.error('Error loading goals:', error);
-    }
-  };
-
-  const toggleGoal = async (goalId: string) => {
-    const updatedGoals = goals.map(goal =>
-      goal.id === goalId ? { ...goal, completed: !goal.completed } : goal
-    );
-    setGoals(updatedGoals);
-    
-    try {
-      await AsyncStorage.setItem('userGoals', JSON.stringify(updatedGoals));
-    } catch (error) {
-      console.error('Error saving goals:', error);
-    }
-  };
-
-  const createNewGoal = async () => {
-    const newGoal: Goal = {
-      id: Date.now().toString(),
-      title: 'new practice goal',
-      completed: false,
-    };
-    const updatedGoals = [...goals, newGoal];
-    setGoals(updatedGoals);
-    try {
-      await AsyncStorage.setItem('userGoals', JSON.stringify(updatedGoals));
-    } catch (error) {
-      console.error('Error saving goals after creation:', error);
-    }
-  };
-
-  const calculateStats = (sessions: SessionData[]) => {
-    const totalSessions = sessions.length;
-    const totalTimeSpent = sessions.reduce((total, session) => total + session.duration, 0);
-    
-    const sortedSessions = sessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    let currentStreak = 0;
-    let currentDate = new Date();
-    
-    for (const session of sortedSessions) {
-      const sessionDate = new Date(session.date);
-      const diffTime = currentDate.getTime() - sessionDate.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const sessions: SessionData[] = sessionsData ? JSON.parse(sessionsData) : [];
       
-      if (diffDays <= 1) {
-        currentStreak++;
-        currentDate = sessionDate;
-      } else {
-        break;
-      }
+      setUserSessions(sessions);
+      
+      // Calculate stats for each game mode
+      const stats = calculateGameStats(sessions);
+      setGameStats(stats);
+      
+      // Generate dynamic goals based on user progress
+      const dynamicGoals = generateDynamicGoals(stats, sessions);
+      setGoals(dynamicGoals);
+      
+      // Animate progress bars
+      animateProgress(dynamicGoals);
+      
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    } finally {
+      setLoading(false);
     }
-
-    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const sessionsThisWeek = sessions.filter(session => 
-      new Date(session.date) > oneWeekAgo
-    ).length;
-
-    const breathBreakersCount = sessions.filter(s => s.gameMode === 'breath-breakers').length;
-    const beatBridgeCount = sessions.filter(s => s.gameMode === 'beat-bridge').length;
-    const dialogueModeCount = sessions.filter(s => s.gameMode === 'dialogue-mode').length;
-    const storytellingCount = sessions.filter(s => s.gameMode === 'storytelling').length;
-
-    setStats({
-      totalSessions,
-      totalTimeSpent: Math.round(totalTimeSpent / 60),
-      currentStreak,
-      sessionsThisWeek,
-      breathBreakersCount,
-      beatBridgeCount,
-      dialogueModeCount,
-      storytellingCount,
-    });
   };
 
-  const CircularProgress = ({ percentage }: { percentage: number }) => {
-    const animatedStyle = useAnimatedStyle(() => {
-      const rotation = (progressValue.value / 100) * 360;
-      return {
-        transform: [{ rotate: `${rotation}deg` }],
+  const calculateGameStats = (sessions: SessionData[]): Record<string, GameStats> => {
+    const stats: Record<string, GameStats> = {};
+    
+    // Group sessions by game mode
+    const gameModeSessions = sessions.reduce((acc, session) => {
+      if (!acc[session.gameMode]) {
+        acc[session.gameMode] = [];
+      }
+      acc[session.gameMode].push(session);
+      return acc;
+    }, {} as Record<string, SessionData[]>);
+
+    // Calculate stats for each game mode
+    Object.entries(gameModeSessions).forEach(([gameMode, gameSessions]) => {
+      const totalTime = gameSessions.reduce((sum, session) => sum + session.duration, 0);
+      const completedSessions = gameSessions.filter(session => session.completed);
+      const lastSession = gameSessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+      
+      stats[gameMode] = {
+        totalTime,
+        sessionsCount: completedSessions.length,
+        averageSession: completedSessions.length > 0 ? Math.round(totalTime / completedSessions.length) : 0,
+        lastPlayed: lastSession?.date || '',
       };
     });
 
+    return stats;
+  };
+
+  const generateDynamicGoals = (stats: Record<string, GameStats>, sessions: SessionData[]): GoalData[] => {
+    const today = new Date();
+    const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()));
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+
+    // Filter sessions for today and this week
+    const todaySessions = sessions.filter(session => 
+      new Date(session.date) >= startOfDay
+    );
+    const weekSessions = sessions.filter(session => 
+      new Date(session.date) >= startOfWeek
+    );
+
+    const goals: GoalData[] = [];
+
+    // Daily Goals
+    const dailyTimeSpent = todaySessions.reduce((sum, session) => sum + session.duration, 0);
+    goals.push({
+      id: 'daily-practice',
+      title: 'Daily Practice',
+      description: 'Spend 15 minutes practicing today',
+      target: 15 * 60, // 15 minutes in seconds
+      current: dailyTimeSpent,
+      unit: 'minutes',
+      gameMode: 'all',
+      type: 'daily',
+      icon: Calendar,
+      gradient: ['#06FFA5', '#4ECDC4']
+    });
+
+    // Weekly Goals
+    const weeklyTimeSpent = weekSessions.reduce((sum, session) => sum + session.duration, 0);
+    goals.push({
+      id: 'weekly-consistency',
+      title: 'Weekly Consistency',
+      description: 'Practice for 2 hours this week',
+      target: 2 * 60 * 60, // 2 hours in seconds
+      current: weeklyTimeSpent,
+      unit: 'hours',
+      gameMode: 'all',
+      type: 'weekly',
+      icon: TrendingUp,
+      gradient: ['#667EEA', '#764BA2']
+    });
+
+    // Game-specific goals based on user progress
+    if (stats['dialogue-mode']) {
+      const dialogueStats = stats['dialogue-mode'];
+      goals.push({
+        id: 'dialogue-conversations',
+        title: 'Conversation Master',
+        description: 'Complete 10 dialogue sessions',
+        target: 10,
+        current: dialogueStats.sessionsCount,
+        unit: 'sessions',
+        gameMode: 'dialogue-mode',
+        type: 'milestone',
+        icon: Target,
+        gradient: ['#8B5CF6', '#A855F7']
+      });
+
+      // Time-based dialogue goal
+      goals.push({
+        id: 'dialogue-time',
+        title: 'Dialogue Expert',
+        description: 'Spend 30 minutes in conversations',
+        target: 30 * 60,
+        current: dialogueStats.totalTime,
+        unit: 'minutes',
+        gameMode: 'dialogue-mode',
+        type: 'milestone',
+        icon: Clock,
+        gradient: ['#F093FB', '#F5576C']
+      });
+    }
+
+    if (stats['breath-breakers']) {
+      const breathStats = stats['breath-breakers'];
+      goals.push({
+        id: 'breathing-cycles',
+        title: 'Breath Master',
+        description: 'Complete 50 breathing cycles',
+        target: 50,
+        current: sessions
+          .filter(s => s.gameMode === 'breath-breakers')
+          .reduce((sum, session) => sum + (session.cycles || 0), 0),
+        unit: 'cycles',
+        gameMode: 'breath-breakers',
+        type: 'milestone',
+        icon: Star,
+        gradient: ['#84FAB0', '#8FD3F4']
+      });
+
+      goals.push({
+        id: 'breathing-time',
+        title: 'Zen Zone',
+        description: 'Meditate for 20 minutes total',
+        target: 20 * 60,
+        current: breathStats.totalTime,
+        unit: 'minutes',
+        gameMode: 'breath-breakers',
+        type: 'milestone',
+        icon: Flame,
+        gradient: ['#A8EDEA', '#FED6E3']
+      });
+    }
+
+    if (stats['beat-bridge']) {
+      const beatStats = stats['beat-bridge'];
+      goals.push({
+        id: 'rhythm-practice',
+        title: 'Rhythm Keeper',
+        description: 'Complete 15 rhythm exercises',
+        target: 15,
+        current: beatStats.sessionsCount,
+        unit: 'exercises',
+        gameMode: 'beat-bridge',
+        type: 'milestone',
+        icon: Award,
+        gradient: ['#FF6B6B', '#FF8E53']
+      });
+    }
+
+    if (stats['storytelling']) {
+      const storyStats = stats['storytelling'];
+      goals.push({
+        id: 'storytelling-sessions',
+        title: 'Story Weaver',
+        description: 'Complete 8 storytelling sessions',
+        target: 8,
+        current: storyStats.sessionsCount,
+        unit: 'stories',
+        gameMode: 'storytelling',
+        type: 'milestone',
+        icon: CheckCircle,
+        gradient: ['#667EEA', '#764BA2']
+      });
+    }
+
+    return goals;
+  };
+
+  const animateProgress = (goals: GoalData[]) => {
+    const animations: Record<string, number> = {};
+    
+    goals.forEach(goal => {
+      const progress = Math.min(goal.current / goal.target, 1);
+      animations[goal.id] = progress;
+    });
+
+    progressAnimations.value = withTiming(animations, { duration: 1500 });
+  };
+
+  const formatTime = (seconds: number): string => {
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+    return `${Math.round(seconds / 3600)}h`;
+  };
+
+  const formatValue = (value: number, unit: string): string => {
+    switch (unit) {
+      case 'minutes':
+        return Math.round(value / 60).toString();
+      case 'hours':
+        return Math.round(value / 3600).toString();
+      case 'seconds':
+        return value.toString();
+      default:
+        return value.toString();
+    }
+  };
+
+  const getProgressPercentage = (goal: GoalData): number => {
+    return Math.min((goal.current / goal.target) * 100, 100);
+  };
+
+  const isGoalCompleted = (goal: GoalData): boolean => {
+    return goal.current >= goal.target;
+  };
+
+  const GoalCard = ({ goal }: { goal: GoalData }) => {
+    const progress = getProgressPercentage(goal);
+    const completed = isGoalCompleted(goal);
+
+    const progressStyle = useAnimatedStyle(() => {
+      const animatedProgress = progressAnimations.value[goal.id] || 0;
+      return {
+        width: `${interpolate(animatedProgress, [0, 1], [0, 100])}%`,
+      };
+    });
+
+    const IconComponent = goal.icon;
+
     return (
-      <View style={styles.progressContainer}>
-        <BlurView intensity={80} tint="dark" style={styles.progressCircle}>
-          <LinearGradient
-            colors={['#8B5CF6', '#A855F7']}
-            style={styles.progressFill}
-          />
-          <Animated.View style={[styles.progressRing, animatedStyle]} />
-          <View style={styles.progressInner}>
-            <Text style={styles.progressText}>{Math.round(percentage)}%</Text>
-            <Text style={styles.progressLabel}>complete</Text>
+      <View style={styles.goalCard}>
+        <LinearGradient
+          colors={completed ? ['#10B981', '#059669'] : goal.gradient}
+          style={styles.goalGradient}
+        >
+          <View style={styles.goalHeader}>
+            <View style={styles.goalIconContainer}>
+              <IconComponent size={24} color="white" strokeWidth={1.5} />
+            </View>
+            <View style={styles.goalInfo}>
+              <Text style={styles.goalTitle}>{goal.title}</Text>
+              <Text style={styles.goalDescription}>{goal.description}</Text>
+            </View>
+            <View style={styles.goalProgress}>
+              <Text style={styles.goalPercentage}>
+                {Math.round(progress)}%
+              </Text>
+            </View>
           </View>
-        </BlurView>
+
+          <View style={styles.progressSection}>
+            <View style={styles.progressBar}>
+              <Animated.View style={[styles.progressFill, progressStyle]} />
+            </View>
+            <Text style={styles.progressText}>
+              {formatValue(goal.current, goal.unit)} / {formatValue(goal.target, goal.unit)} {goal.unit}
+            </Text>
+          </View>
+
+          {completed && (
+            <View style={styles.completedBadge}>
+              <CheckCircle size={16} color="white" />
+              <Text style={styles.completedText}>Completed!</Text>
+            </View>
+          )}
+        </LinearGradient>
       </View>
     );
   };
 
-  const StatCard = ({ icon: Icon, title, value, subtitle, gradient }: any) => (
-    <TouchableOpacity style={styles.statCard} activeOpacity={0.9}>
-      <BlurView intensity={80} tint="dark" style={styles.statGlass}>
-        <LinearGradient
-          colors={[`${gradient[0]}40`, `${gradient[1]}20`]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.statGradientOverlay}
-        />
-        <LinearGradient
-          colors={gradient}
-          style={styles.statAccentBorder}
-        />
-        <View style={styles.statIconContainer}>
-          <LinearGradient
-            colors={gradient}
-            style={styles.statIconGradient}
-          >
-            <Icon size={22} color="#FFFFFF" strokeWidth={1.8} />
-          </LinearGradient>
-        </View>
-        <Text style={styles.statValue}>{value}</Text>
-        <Text style={styles.statTitle}>{title}</Text>
-        {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
-      </BlurView>
-    </TouchableOpacity>
-  );
+  const OverviewCard = () => {
+    const totalTime = Object.values(gameStats).reduce((sum, stat) => sum + stat.totalTime, 0);
+    const totalSessions = Object.values(gameStats).reduce((sum, stat) => sum + stat.sessionsCount, 0);
+    const completedGoals = goals.filter(isGoalCompleted).length;
 
-  const GoalItem = ({ goal }: { goal: Goal }) => (
-    <TouchableOpacity
-      style={styles.goalItem}
-      onPress={() => toggleGoal(goal.id)}
-      activeOpacity={0.8}
-    >
-      <BlurView intensity={60} tint="dark" style={styles.goalGlass}>
+    return (
+      <View style={styles.overviewCard}>
         <LinearGradient
-          colors={goal.completed ? ['#06FFA5', '#4ECDC4'] : ['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']}
-          style={styles.goalAccent}
-        />
-        <View style={styles.goalContent}>
-          <View style={[
-            styles.goalCheckbox,
-            goal.completed && styles.goalCheckboxCompleted
-          ]}>
-            {goal.completed && <Check size={16} color="white" strokeWidth={2.5} />}
+          colors={['rgba(139, 92, 246, 0.15)', 'rgba(59, 130, 246, 0.1)']}
+          style={styles.overviewGradient}
+        >
+          <Text style={styles.overviewTitle}>Your Progress</Text>
+          <View style={styles.overviewStats}>
+            <View style={styles.overviewStat}>
+              <Text style={styles.overviewStatNumber}>{formatTime(totalTime)}</Text>
+              <Text style={styles.overviewStatLabel}>Total Practice</Text>
+            </View>
+            <View style={styles.overviewStat}>
+              <Text style={styles.overviewStatNumber}>{totalSessions}</Text>
+              <Text style={styles.overviewStatLabel}>Sessions</Text>
+            </View>
+            <View style={styles.overviewStat}>
+              <Text style={styles.overviewStatNumber}>{completedGoals}</Text>
+              <Text style={styles.overviewStatLabel}>Goals Hit</Text>
+            </View>
           </View>
-          <Text style={[
-            styles.goalText,
-            goal.completed && styles.goalTextCompleted
-          ]}>
-            {goal.title}
-          </Text>
-          {goal.completed && (
-            <LinearGradient
-              colors={['#06FFA5', '#4ECDC4']}
-              style={styles.completedBadge}
-            >
-              <Text style={styles.completedLabel}>done</Text>
-            </LinearGradient>
-          )}
-        </View>
-      </BlurView>
-    </TouchableOpacity>
-  );
-
-  const GameModeCard = ({ title, count, gradient, icon: Icon }: { title: string; count: number; gradient: string[]; icon: any }) => (
-    <TouchableOpacity style={styles.gameModeCard} activeOpacity={0.9}>
-      <BlurView intensity={60} tint="dark" style={styles.gameModeGlass}>
-        <LinearGradient
-          colors={[`${gradient[0]}30`, `${gradient[1]}15`]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.gameModeOverlay}
-        />
-        <LinearGradient
-          colors={gradient}
-          style={styles.gameModeAccent}
-        />
-        <View style={styles.gameModeContent}>
-          <View style={styles.gameModeIconContainer}>
-            <LinearGradient
-              colors={gradient}
-              style={styles.gameModeIconGradient}
-            >
-              <Icon size={20} color="#FFFFFF" strokeWidth={1.8} />
-            </LinearGradient>
-          </View>
-          <View style={styles.gameModeTextContainer}>
-            <Text style={styles.gameModeCount}>{count}</Text>
-            <Text style={styles.gameModeTitle}>{title}</Text>
-          </View>
-        </View>
-      </BlurView>
-    </TouchableOpacity>
-  );
-
-  const completedGoals = goals.filter(goal => goal.completed).length;
-  const totalGoals = goals.length;
-  const progressPercentage = totalGoals > 0 ? (completedGoals / totalGoals) * 100 : 0;
+        </LinearGradient>
+      </View>
+    );
+  };
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#0B1426', '#1E293B', '#0F172A']}
-        style={styles.backgroundGradient}
-      />
+    <LinearGradient
+      colors={['#0F172A', '#1E293B', '#334155']}
+      style={styles.container}
+    >
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
-            <LinearGradient
-              colors={['#E8F4FD', '#CBD5E1', '#E8F4FD']}
-              style={styles.titleGradient}
-            >
-              <Text style={styles.title}>TARGETS</Text>
-            </LinearGradient>
-            <Text style={styles.subtitle}>track progress and achievements</Text>
-            <View style={styles.decorativeLine} />
+            <Text style={styles.title}>Goals & Progress</Text>
+            <Text style={styles.subtitle}>track your mindful journey</Text>
           </View>
 
-          <CircularProgress percentage={progressPercentage} />
-
-          <View style={styles.journeySection}>
-            <Text style={styles.journeyTitle}>Neural Progress</Text>
-            <Text style={styles.journeyStats}>
-              {completedGoals} of {goals.length} targets achieved
-            </Text>
-            <Text style={styles.journeyDetails}>
-              {completedGoals} completed, {goals.length - completedGoals} in progress
-            </Text>
-          </View>
+          <OverviewCard />
 
           <View style={styles.goalsSection}>
-            <Text style={styles.sectionTitle}>Active Targets</Text>
-            <View style={styles.goalsList}>
-              {goals.map((goal) => (
-                <GoalItem key={goal.id} goal={goal} />
-              ))}
-            </View>
-            
-            <TouchableOpacity
-              style={styles.createGoalButton}
-              onPress={createNewGoal}
-              activeOpacity={0.8}
-            >
-              <BlurView intensity={60} tint="dark" style={styles.createGoalGlass}>
-                <LinearGradient
-                  colors={['#8B5CF630', '#A855F715']}
-                  style={styles.createGoalOverlay}
-                />
-                <View style={styles.createGoalContent}>
-                  <View style={styles.createGoalIcon}>
-                    <Plus size={20} color="#8B5CF6" strokeWidth={2} />
-                  </View>
-                  <View style={styles.createGoalText}>
-                    <Text style={styles.createGoalTitle}>create new target</Text>
-                    <Text style={styles.createGoalSubtitle}>set your next challenge</Text>
-                  </View>
-                </View>
-              </BlurView>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.statsGrid}>
-            <StatCard
-              icon={Trophy}
-              title="total sessions"
-              value={stats.totalSessions}
-              gradient={['#8B5CF6', '#A855F7']}
-            />
-            <StatCard
-              icon={Clock}
-              title="time practiced"
-              value={`${stats.totalTimeSpent}m`}
-              gradient={['#6366F1', '#8B5CF6']}
-            />
-            <StatCard
-              icon={Target}
-              title="current streak"
-              value={stats.currentStreak}
-              subtitle="days"
-              gradient={['#A855F7', '#EC4899']}
-            />
-            <StatCard
-              icon={TrendingUp}
-              title="this week"
-              value={stats.sessionsThisWeek}
-              subtitle="sessions"
-              gradient={['#7C3AED', '#6366F1']}
-            />
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Flow Mode Progress</Text>
-            <View style={styles.gameModesContainer}>
-              <GameModeCard
-                title="quantum breath"
-                count={stats.breathBreakersCount}
-                gradient={['#7C3AED', '#6366F1']}
-                icon={Atom}
-              />
-              <GameModeCard
-                title="flow state"
-                count={stats.beatBridgeCount}
-                gradient={['#6366F1', '#8B5CF6']}
-                icon={Zap}
-              />
-              <GameModeCard
-                title="neural sync"
-                count={stats.dialogueModeCount}
-                gradient={['#8B5CF6', '#A855F7']}
-                icon={Brain}
-              />
-              <GameModeCard
-                title="reality forge"
-                count={stats.storytellingCount}
-                gradient={['#A855F7', '#EC4899']}
-                icon={Pen}
-              />
-            </View>
-          </View>
-
-          <View style={styles.section}>
-            <TouchableOpacity style={styles.achievementCard} activeOpacity={0.9}>
-              <BlurView intensity={80} tint="dark" style={styles.achievementGlass}>
-                <LinearGradient
-                  colors={['#FFD70030', '#FFA50015']}
-                  style={styles.achievementOverlay}
-                />
-                <View style={styles.achievementIconContainer}>
-                  <Award size={36} color="#FFD700" strokeWidth={1.5} />
-                </View>
-                <Text style={styles.achievementTitle}>Neural Achievement</Text>
-                <Text style={styles.achievementText}>
-                  {stats.currentStreak > 0
-                    ? `maintaining ${stats.currentStreak} day flow streak 🔥`
-                    : 'initiate practice session to begin flow sequence'}
-                </Text>
-              </BlurView>
-            </TouchableOpacity>
+            <Text style={styles.sectionTitle}>Active Goals</Text>
+            {goals.map(goal => (
+              <GoalCard key={goal.id} goal={goal} />
+            ))}
           </View>
         </ScrollView>
       </SafeAreaView>
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    position: 'relative',
-  },
-  backgroundGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
   },
   safeArea: {
     flex: 1,
   },
-  scrollContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 120,
+  scrollView: {
+    flex: 1,
+    paddingHorizontal: 20,
   },
   header: {
     alignItems: 'center',
-    marginTop: 60,
-    marginBottom: 56,
-  },
-  titleGradient: {
-    paddingHorizontal: 24,
-    paddingVertical: 8,
-    borderRadius: 12,
-    marginBottom: 20,
+    marginTop: 40,
+    marginBottom: 30,
   },
   title: {
-    fontSize: 36,
-    fontWeight: '300',
-    color: '#0B1426',
-    letterSpacing: 12,
-    fontFamily: 'System',
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    fontWeight: '400',
-    color: '#94A3B8',
-    textAlign: 'center',
-    letterSpacing: 1.5,
-    textTransform: 'lowercase',
-    fontFamily: 'System',
-    marginBottom: 16,
-  },
-  decorativeLine: {
-    width: 60,
-    height: 2,
-    backgroundColor: '#8B5CF6',
-    borderRadius: 1,
-    opacity: 0.6,
-  },
-  progressContainer: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  progressCircle: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-    borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    opacity: 0.1,
-  },
-  progressRing: {
-    position: 'absolute',
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    borderWidth: 4,
-    borderColor: '#8B5CF6',
-    borderRightColor: 'transparent',
-    borderBottomColor: 'transparent',
-  },
-  progressInner: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  progressText: {
     fontSize: 28,
     fontWeight: '700',
     color: '#FFFFFF',
-    textShadowColor: 'rgba(255, 255, 255, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    marginBottom: 8,
+    letterSpacing: 0.5,
   },
-  progressLabel: {
-    fontSize: 12,
-    color: '#94A3B8',
+  subtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.7)',
     letterSpacing: 1,
     textTransform: 'lowercase',
-    marginTop: 4,
   },
-  journeySection: {
+  overviewCard: {
+    marginBottom: 30,
+    borderRadius: 20,
+    overflow: 'hidden',
+    elevation: 8,
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  overviewGradient: {
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+  },
+  overviewTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  overviewStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  overviewStat: {
     alignItems: 'center',
-    marginBottom: 48,
   },
-  journeyTitle: {
+  overviewStatNumber: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 12,
-    textShadowColor: 'rgba(255, 255, 255, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  journeyStats: {
-    fontSize: 18,
     color: '#8B5CF6',
-    fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  journeyDetails: {
-    fontSize: 14,
-    color: '#94A3B8',
+  overviewStatLabel: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
+    textTransform: 'uppercase',
     letterSpacing: 0.5,
-    textTransform: 'lowercase',
   },
   goalsSection: {
-    marginBottom: 40,
+    paddingBottom: 100,
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#FFFFFF',
-    marginBottom: 24,
-    textShadowColor: 'rgba(255, 255, 255, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    marginBottom: 20,
+    letterSpacing: 0.5,
   },
-  goalsList: {
-    marginBottom: 24,
-    gap: 16,
-  },
-  goalItem: {
-    borderRadius: 20,
+  goalCard: {
+    marginBottom: 16,
+    borderRadius: 18,
     overflow: 'hidden',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
   },
-  goalGlass: {
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    position: 'relative',
-    overflow: 'hidden',
+  goalGradient: {
+    padding: 20,
   },
-  goalAccent: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-  },
-  goalContent: {
+  goalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
+    marginBottom: 16,
   },
-  goalCheckbox: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    marginRight: 20,
+  goalIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 16,
   },
-  goalCheckboxCompleted: {
-    backgroundColor: '#06FFA5',
-    borderColor: '#06FFA5',
-  },
-  goalText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    fontWeight: '500',
+  goalInfo: {
     flex: 1,
-    letterSpacing: 0.4,
-    textTransform: 'lowercase',
   },
-  goalTextCompleted: {
-    textDecorationLine: 'line-through',
-    color: '#94A3B8',
+  goalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  goalDescription: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.8)',
+    lineHeight: 18,
+  },
+  goalProgress: {
+    alignItems: 'center',
+  },
+  goalPercentage: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  progressSection: {
+    marginTop: 8,
+  },
+  progressBar: {
+    height: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 4,
+  },
+  progressText: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+    textAlign: 'center',
   },
   completedBadge: {
-    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
     paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 12,
+    alignSelf: 'center',
   },
-  completedLabel: {
+  completedText: {
     fontSize: 12,
     color: '#FFFFFF',
     fontWeight: '600',
-    letterSpacing: 0.5,
-    textTransform: 'lowercase',
-  },
-  createGoalButton: {
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  createGoalGlass: {
-    backgroundColor: 'rgba(15, 23, 42, 0.3)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(139, 92, 246, 0.3)',
-    borderStyle: 'dashed',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  createGoalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    opacity: 0.8,
-  },
-  createGoalContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-  },
-  createGoalIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: 'rgba(139, 92, 246, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 20,
-  },
-  createGoalText: {
-    flex: 1,
-  },
-  createGoalTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#8B5CF6',
-    marginBottom: 4,
-    letterSpacing: 0.4,
-    textTransform: 'lowercase',
-  },
-  createGoalSubtitle: {
-    fontSize: 14,
-    color: 'rgba(139, 92, 246, 0.7)',
-    letterSpacing: 0.3,
-    textTransform: 'lowercase',
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 40,
-    gap: 16,
-  },
-  statCard: {
-    width: '47%',
-    height: 120,
-    borderRadius: 24,
-    overflow: 'hidden',
-  },
-  statGlass: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-    borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.2)',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  statGradientOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    opacity: 0.15,
-  },
-  statAccentBorder: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-  },
-  statIconContainer: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  statIconGradient: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textShadowColor: 'rgba(255, 255, 255, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-    marginTop: 24,
-    marginLeft: 20,
-  },
-  statTitle: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 4,
-    marginLeft: 20,
-    letterSpacing: 0.5,
-    textTransform: 'lowercase',
-  },
-  statSubtitle: {
-    fontSize: 10,
-    color: 'rgba(148, 163, 184, 0.7)',
-    marginLeft: 20,
-    letterSpacing: 0.3,
-    textTransform: 'lowercase',
-  },
-  section: {
-    marginBottom: 40,
-  },
-  gameModesContainer: {
-    gap: 16,
-  },
-  gameModeCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  gameModeGlass: {
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  gameModeOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    opacity: 0.1,
-  },
-  gameModeAccent: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-  },
-  gameModeContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-  },
-  gameModeIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    marginRight: 20,
-    overflow: 'hidden',
-  },
-  gameModeIconGradient: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  gameModeTextContainer: {
-    flex: 1,
-  },
-  gameModeCount: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textShadowColor: 'rgba(255, 255, 255, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-    marginBottom: 4,
-  },
-  gameModeTitle: {
-    fontSize: 14,
-    color: '#94A3B8',
-    letterSpacing: 0.5,
-    textTransform: 'lowercase',
-  },
-  achievementCard: {
-    borderRadius: 24,
-    overflow: 'hidden',
-  },
-  achievementGlass: {
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 215, 0, 0.3)',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  achievementOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    opacity: 0.1,
-  },
-  achievementIconContainer: {
-    alignItems: 'center',
-    paddingTop: 32,
-    paddingBottom: 16,
-  },
-  achievementTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFD700',
-    textAlign: 'center',
-    marginBottom: 12,
-    textShadowColor: 'rgba(255, 215, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  achievementText: {
-    fontSize: 14,
-    color: '#94A3B8',
-    textAlign: 'center',
-    lineHeight: 20,
-    paddingHorizontal: 24,
-    paddingBottom: 32,
-    letterSpacing: 0.3,
-    textTransform: 'lowercase',
+    marginLeft: 4,
   },
 });
