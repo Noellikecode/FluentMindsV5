@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, SafeAreaView, TouchableOpacity, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Clock, Target, TrendingUp, Award, Star, Flame, Calendar, CheckCircle } from 'lucide-react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, interpolate } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, interpolate } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
@@ -47,12 +48,7 @@ export default function Goals() {
   const [goals, setGoals] = useState<GoalData[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Animation values
   const progressAnimations = useSharedValue<Record<string, number>>({});
-
-  useEffect(() => {
-    loadUserData();
-  }, []);
 
   const loadUserData = async () => {
     try {
@@ -61,15 +57,12 @@ export default function Goals() {
       
       setUserSessions(sessions);
       
-      // Calculate stats for each game mode
       const stats = calculateGameStats(sessions);
       setGameStats(stats);
       
-      // Generate dynamic goals based on user progress
       const dynamicGoals = generateDynamicGoals(stats, sessions);
       setGoals(dynamicGoals);
       
-      // Animate progress bars
       animateProgress(dynamicGoals);
       
     } catch (error) {
@@ -79,10 +72,15 @@ export default function Goals() {
     }
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      loadUserData();
+    }, [])
+  );
+
   const calculateGameStats = (sessions: SessionData[]): Record<string, GameStats> => {
     const stats: Record<string, GameStats> = {};
     
-    // Group sessions by game mode
     const gameModeSessions = sessions.reduce((acc, session) => {
       if (!acc[session.gameMode]) {
         acc[session.gameMode] = [];
@@ -91,7 +89,6 @@ export default function Goals() {
       return acc;
     }, {} as Record<string, SessionData[]>);
 
-    // Calculate stats for each game mode
     Object.entries(gameModeSessions).forEach(([gameMode, gameSessions]) => {
       const totalTime = gameSessions.reduce((sum, session) => sum + session.duration, 0);
       const completedSessions = gameSessions.filter(session => session.completed);
@@ -110,10 +107,11 @@ export default function Goals() {
 
   const generateDynamicGoals = (stats: Record<string, GameStats>, sessions: SessionData[]): GoalData[] => {
     const today = new Date();
-    const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()));
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const dayOfWeek = today.getDay();
+    const startOfWeek = new Date(today.setDate(today.getDate() - dayOfWeek));
+    startOfWeek.setHours(0, 0, 0, 0);
 
-    // Filter sessions for today and this week
     const todaySessions = sessions.filter(session => 
       new Date(session.date) >= startOfDay
     );
@@ -123,13 +121,12 @@ export default function Goals() {
 
     const goals: GoalData[] = [];
 
-    // Daily Goals
     const dailyTimeSpent = todaySessions.reduce((sum, session) => sum + session.duration, 0);
     goals.push({
       id: 'daily-practice',
       title: 'Daily Practice',
       description: 'Spend 15 minutes practicing today',
-      target: 15 * 60, // 15 minutes in seconds
+      target: 15 * 60,
       current: dailyTimeSpent,
       unit: 'minutes',
       gameMode: 'all',
@@ -138,13 +135,12 @@ export default function Goals() {
       gradient: ['#06FFA5', '#4ECDC4']
     });
 
-    // Weekly Goals
     const weeklyTimeSpent = weekSessions.reduce((sum, session) => sum + session.duration, 0);
     goals.push({
       id: 'weekly-consistency',
       title: 'Weekly Consistency',
       description: 'Practice for 2 hours this week',
-      target: 2 * 60 * 60, // 2 hours in seconds
+      target: 2 * 60 * 60,
       current: weeklyTimeSpent,
       unit: 'hours',
       gameMode: 'all',
@@ -153,7 +149,6 @@ export default function Goals() {
       gradient: ['#667EEA', '#764BA2']
     });
 
-    // Game-specific goals based on user progress
     if (stats['dialogue-mode']) {
       const dialogueStats = stats['dialogue-mode'];
       goals.push({
@@ -169,7 +164,6 @@ export default function Goals() {
         gradient: ['#8B5CF6', '#A855F7']
       });
 
-      // Time-based dialogue goal
       goals.push({
         id: 'dialogue-time',
         title: 'Dialogue Expert',
@@ -264,7 +258,7 @@ export default function Goals() {
   const formatTime = (seconds: number): string => {
     if (seconds < 60) return `${seconds}s`;
     if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-    return `${Math.round(seconds / 3600)}h`;
+    return `${(seconds / 3600).toFixed(1)}h`;
   };
 
   const formatValue = (value: number, unit: string): string => {
@@ -272,7 +266,7 @@ export default function Goals() {
       case 'minutes':
         return Math.round(value / 60).toString();
       case 'hours':
-        return Math.round(value / 3600).toString();
+        return (value / 3600).toFixed(1);
       case 'seconds':
         return value.toString();
       default:
@@ -281,6 +275,7 @@ export default function Goals() {
   };
 
   const getProgressPercentage = (goal: GoalData): number => {
+    if (goal.target === 0) return 0;
     return Math.min((goal.current / goal.target) * 100, 100);
   };
 
